@@ -58,4 +58,8 @@ describe('TLD coverage rule (I1, I2)', () => {
   it('calls project_add_checks once per name (M1)', () => {
     expect(skill).toMatch(/`project_add_checks` once per name/);
   });
+
+  it('splits check_domains calls by the tool limits (M2)', () => {
+    expect(skill).toMatch(/at most 30 TLDs, 100 names, and 200 domains/);
+  });
 });
