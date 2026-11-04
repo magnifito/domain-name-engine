@@ -301,6 +301,18 @@ describe('ProjectStore.addChecks', () => {
     expect(checks?.competitors.map((c) => c.url)).toEqual(['https://fridgely.example']);
   });
 
+  it('rejects a domain result that belongs to a different name', async () => {
+    const { store, slug } = await withProject();
+    await store.addNames(slug, [{ name: 'Alpha', rulesetId: 'coined' }], weightsOf('coined'));
+    await expect(
+      store.addChecks(slug, [{ name: 'Alpha', kind: 'domain', results: [domain('google.com')] }]),
+    ).rejects.toThrow(/"google\.com" does not belong to "Alpha"/);
+    await store.addChecks(slug, [
+      { name: 'Alpha', kind: 'domain', results: [domain('getalpha.com'), domain('alpha.io')] },
+    ]);
+    expect((await store.get(slug)).project.checks.alpha?.domains).toHaveLength(2);
+  });
+
   it('rejects unknown names and invalid results without writing', async () => {
     const { store, slug } = await withProject();
     await store.addNames(slug, [{ name: 'Fridgely', rulesetId: 'coined' }], weightsOf('coined'));

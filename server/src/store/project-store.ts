@@ -321,6 +321,15 @@ export class ProjectStore {
             batch.results,
             `Invalid domain results for "${batch.name}"`,
           );
+          for (const check of incoming) {
+            // Affixed forms such as getalpha.com are allowed; an unrelated domain is not.
+            const first = check.domain.toLowerCase().split('.')[0] ?? '';
+            if (!first.includes(entry.label)) {
+              throw new StoreError(
+                `"${check.domain}" does not belong to "${entry.name}"; its first label must contain "${entry.label}".`,
+              );
+            }
+          }
           checks.domains = mergeBy(checks.domains, incoming, (c) => c.domain);
           return { name: entry.label, kind: batch.kind, stored: checks.domains.length };
         }
