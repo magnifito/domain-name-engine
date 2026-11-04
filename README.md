@@ -93,6 +93,8 @@ The seed table from 2026-11-04 covers a small set of TLDs:
 - Namecheap: rows without prices, marked "unverified", until the first refresh with API keys.
 - Cloudflare: 18 TLDs from cfdomainpricing.com/prices.json, a free third-party list of Cloudflare Registrar prices in USD.
 
+Without keys, Spaceship and Namecheap have no bundled price for common TLDs such as .com, .de, and .uk. Run `pnpm refresh:tlds` with keys set, or set the registrar keys for live quotes.
+
 The engine never scrapes registrar web pages. Spaceship and Namecheap price pages block automated clients, so the table is filled only from official APIs and documented public files.
 
 ## Data and privacy
