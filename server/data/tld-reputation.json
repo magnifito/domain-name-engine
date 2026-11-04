@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "rows": [
+    {
+      "tld": "ai",
+      "reputation": "good",
+      "reputationNote": "Country code of Anguilla, widely used by AI products. High first-year and renewal prices.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "app",
+      "reputation": "good",
+      "reputationNote": "Google Registry TLD on the HSTS preload list: sites must serve HTTPS.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "bond",
+      "reputation": "poor",
+      "reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "co",
+      "reputation": "good",
+      "reputationNote": "Country code of Colombia, widely used as a short alternative to .com. Common typo target for .com.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "com",
+      "reputation": "good",
+      "reputationNote": "The default commercial TLD. Most trusted by users and mail filters.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "dev",
+      "reputation": "good",
+      "reputationNote": "Google Registry TLD on the HSTS preload list: sites must serve HTTPS. Popular with developer tools.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "io",
+      "reputation": "good",
+      "reputationNote": "Country code of the British Indian Ocean Territory, widely used by tech startups. Long-term status of the ccTLD has had public debate.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "lol",
+      "reputation": "mixed",
+      "reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "me",
+      "reputation": "good",
+      "reputationNote": "Country code of Montenegro, often used for personal brands.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "net",
+      "reputation": "good",
+      "reputationNote": "Long-standing generic TLD with broad trust.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "online",
+      "reputation": "mixed",
+      "reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "org",
+      "reputation": "good",
+      "reputationNote": "Long-standing generic TLD, associated with non-profits and communities.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "sbs",
+      "reputation": "poor",
+      "reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "sh",
+      "reputation": "good",
+      "reputationNote": "Country code of Saint Helena, popular with developer tools and shell-related names.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "shop",
+      "reputation": "mixed",
+      "reputationNote": "Generic TLD for online stores. Trust varies with how it is used.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "site",
+      "reputation": "mixed",
+      "reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "space",
+      "reputation": "mixed",
+      "reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "store",
+      "reputation": "mixed",
+      "reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "tech",
+      "reputation": "mixed",
+      "reputationNote": "Generic TLD for technology brands. Low first-year promotions draw bulk registrations, so some filters score it lower.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "tld": "xyz",
+      "reputation": "mixed",
+      "reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+      "source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+      "checkedAt": "2026-11-04"
+    }
+  ]
+}
