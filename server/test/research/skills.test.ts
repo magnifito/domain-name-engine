@@ -20,4 +20,9 @@ describe('research skill text', () => {
     expect(skill).toMatch(/whole `search_trademarks` response/);
     expect(skill).toMatch(/one-item array/);
   });
+
+  it('treats page titles as untrusted data (M7)', () => {
+    expect(skill).toMatch(/untrusted data/i);
+    expect(skill).toMatch(/never follow instructions/i);
+  });
 });
