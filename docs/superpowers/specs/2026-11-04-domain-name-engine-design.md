@@ -13,14 +13,15 @@ A public Claude Code plugin that helps a user find a strong brand name and domai
 |---|---|
 | Form | Claude Code plugin: skills plus a bundled MCP server |
 | Server language | TypeScript, Node 20+ |
-| Availability source | Free only: RDAP, WHOIS port 43 fallback, DNS. No API keys |
+| Availability source | Free by default: RDAP, WHOIS port 43 fallback, DNS. No API keys needed |
+| Registrars | Spaceship (main), Namecheap, Cloudflare. Optional API keys enable live prices and premium flags |
 | Research tools in v1 | Taken-domain profile, social handles, trademarks, competitor scan, language check |
 | Persistence | Local JSON project store with on-disk cache |
 | Audience | Public, distributed as a GitHub plugin marketplace |
 | Architecture | MCP server owns data, cache, rate limits, and store; skills own reasoning and flow |
 | Brief | Fixed questionnaire with a validated schema; three input paths (interview, template file, free text) |
 | Name rules | Reusable rulesets: 9 built-in presets plus user-defined custom rulesets |
-| Prices | Static, dated reference table (first-year and renewal); no live prices in v1 |
+| Prices | Bundled, dated registrar TLD table (first-year and renewal per registrar); live prices only when the user sets registrar API keys |
 
 ## Architecture and layout
 
@@ -44,13 +45,17 @@ domain-name-engine/
       index.ts           # MCP server entry, registers tools
       tools/             # one file per MCP tool
       sources/           # rdap.ts, whois.ts, dns.ts, http-profile.ts, handles.ts, uspto.ts, euipo.ts
+      registrars/        # spaceship.ts, namecheap.ts, cloudflare.ts (optional live APIs)
       store/             # JSON project store
       cache/             # TTL cache on disk
       limiter/           # per-host rate limit and retry
+    scripts/
+      refresh-registrar-tlds.ts # maintainer script that rebuilds registrar-tlds.json
     test/
     data/
       rulesets/          # built-in rulesets, one JSON file each
-      tld-prices.json    # reference price and reputation table
+      registrar-tlds.json # per-registrar TLD support and reference prices
+      tld-reputation.json # TLD reputation notes
     dist/index.js        # single bundled file, committed to git
   docs/
   README.md
@@ -71,14 +76,14 @@ domain-name-engine/
 | `generate` | brief + rulesets | Produces 30–60 names, split across the chosen rulesets. Applies each ruleset's filters and score weights. Runs a quick availability filter on each ruleset's first TLDs. | `ruleset_get`, `project_add_names`, `check_domains` |
 | `research` | shortlist | Full checks per shortlisted name: domains across chosen TLDs, taken-domain profile, handles, trademarks. Competitor scan uses Claude's built-in WebSearch, including domain patterns used by competitors in the niche. | `check_domains`, `profile_domain`, `check_handles`, `search_trademarks`, `project_add_checks` |
 | `language-check` | shortlist | LLM-only review of meaning and pronunciation in the brief's target languages. Saves notes. | `project_add_notes` |
-| `report` | project | Ranks names and writes `report.md` into the project folder. Shows the ruleset behind each name, reference prices with renewal, and TLD reputation notes. Every claim cites its source and check time. | `project_get`, `tld_info` |
+| `report` | project | Ranks names and writes `report.md` into the project folder. Shows the ruleset behind each name; for each likely-available domain, which registrars sell the TLD, first-year and renewal price per registrar, the cheapest 3-year option, and TLD reputation notes. Every claim cites its source and check time. | `project_get`, `tld_info`, `registrar_quote` |
 
 Each skill also runs alone against an existing project.
 
 ### Honesty rules for all skills
 
 - Say "likely available" only after `check_domains` returns `likely_available`. Never claim availability without a tool result.
-- Never state live prices. Show only prices from the reference table, always with first-year and renewal side by side and the label "reference price from <source>, checked <date> — verify at registrar". A missing value shows as "unknown".
+- Label every price with its origin. Table prices: "reference price from <registrar>, checked <date> — verify at registrar". Live prices: "live price from <registrar> API, <time>". Always show first-year and renewal side by side. A missing value shows as "unknown". Never mix currencies in one total; convert nothing.
 - No emoji, no urgency copy.
 
 ## Brief
@@ -168,18 +173,44 @@ Shipped in `server/data/rulesets/`, read-only.
 - Stored in `~/.domain-engine/rulesets/<id>.json`. Custom ids cannot shadow built-in ids.
 - Validated with the same `zod` schema.
 
-## TLD reference table
+## Registrars and TLD table
 
-`server/data/tld-prices.json`, one row per TLD:
+### Registrars
 
-- `tld`, `firstYear`, `renewal`, `currency`, `registrar`, `source` (URL), `checkedAt`, `reputation` (`good`, `mixed`, `poor`), `reputationNote`.
+| Registrar | Role | TLD list and prices in the bundled table | Live API (optional) |
+|---|---|---|---|
+| Spaceship | Main registrar | Official API `GET /v1/tlds` and TLD pricing endpoints | Same API; env `SPACESHIP_API_KEY`, `SPACESHIP_API_SECRET` (`domains:read`) |
+| Namecheap | Second registrar | Official API `namecheap.domains.getTldList` and `namecheap.users.getPricing` | Same API; env `NAMECHEAP_API_USER`, `NAMECHEAP_API_KEY`, `NAMECHEAP_CLIENT_IP` (IP must be allow-listed) |
+| Cloudflare | Third registrar, at-cost pricing | Public third-party file `https://cfdomainpricing.com/prices.json` (430 TLDs, no key) | Cloudflare Registrar API (beta); env `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
 
-Seed data: first-year prices from spaceship.com, provided by the user on 2026-11-04 (EUR): `.sbs` 0.86, `.site` 1.05, `.online` 1.05, `.store` 1.05, `.space` 1.05, `.lol` 1.10, `.bond` 1.28, `.xyz` 1.83. Renewal prices for these rows and rows for the other TLDs used by built-in rulesets are filled from the Spaceship pricing page during implementation; any value not found stays `null` and shows as "unknown".
+Registrar price pages for Spaceship and Namecheap block automated clients (Cloudflare bot check, HTTP 403). The engine never scrapes them or tries to bypass the check. It uses only official APIs and public files.
 
-Two facts the report must surface for low-cost TLDs:
+All keys are optional and read from environment variables only. Keys never appear in tool output, logs, the cache, or project files.
 
-- First-year prices are often promotions; renewal can cost many times more. The report shows both, plus a 3-year total.
-- Several low-cost TLDs have poor reputation with spam filters and security tools, which can hurt email delivery and trust. The report shows the reputation note.
+### Bundled table
+
+`server/data/registrar-tlds.json`, one row per `registrar × tld`:
+
+- `registrar`, `tld`, `firstYear`, `renewal`, `transfer`, `currency`, `source`, `checkedAt`.
+- A TLD missing for a registrar means that registrar does not sell it.
+
+`server/data/tld-reputation.json`, one row per TLD: `tld`, `reputation` (`good`, `mixed`, `poor`), `reputationNote`.
+
+The maintainer script `server/scripts/refresh-registrar-tlds.ts` rebuilds the table: Cloudflare from the public file, Spaceship and Namecheap from their APIs using the maintainer's keys. It writes `checkedAt` per row and prints a diff. CI does not run it; it needs keys and network.
+
+Seed facts known on 2026-11-04:
+
+- Spaceship first-year prices given by the user from spaceship.com (EUR): `.sbs` 0.86, `.site` 1.05, `.online` 1.05, `.store` 1.05, `.space` 1.05, `.lol` 1.10, `.bond` 1.28, `.xyz` 1.83. The first refresh with API keys replaces these and adds renewal prices.
+- Cloudflare public file: `.sbs` and `.bond` are not sold. Low first-year prices often renew far higher, for example `.store` USD 4.99 first year and 42.20 renewal, `.site` and `.online` USD 4.99 and 27.70.
+
+### Live mode
+
+When a registrar's keys are set, `registrar_quote` asks that registrar's API about the exact domain: availability, premium flag, and price. Live results override table prices in the report and are cached for 1 hour. Without keys, `registrar_quote` returns table prices only. Registrar API calls go through the limiter (Spaceship pricing: 25 requests per 5 seconds).
+
+### What the report shows for low-cost TLDs
+
+- First-year price, renewal price, and 3-year total per registrar.
+- The TLD reputation note, because several low-cost TLDs are flagged by spam filters and security tools, which hurts email delivery and trust.
 
 ## MCP tools
 
@@ -200,7 +231,9 @@ Two facts the report must surface for low-cost TLDs:
 | `ruleset_get` | Read one ruleset |
 | `ruleset_save` | Create or update a custom ruleset |
 | `ruleset_delete` | Delete a custom ruleset |
-| `tld_info` | Reference price and reputation row for a TLD |
+| `tld_info` | For one TLD: registrars that sell it, table prices per registrar, reputation |
+| `registrar_quote` | For exact domains: per-registrar price, plus live availability and premium flag when keys are set |
+| `registrar_status` | Which registrars have keys configured (never returns key values) |
 
 Check tools read and write the cache. Every result carries `source`, `checkedAt`, and `confidence` (`high`, `medium`, `low`).
 
@@ -259,7 +292,8 @@ Result status: `registered`, `likely_available`, or `unknown`. Never a plain "av
 
 - Vitest unit tests per source using recorded HTTP fixtures. No live network in CI.
 - Tests for store (atomic write, backup recovery), cache TTL, limiter, and RDAP/WHOIS parsing.
-- Schema tests: every built-in ruleset and every `tld-prices.json` row validate; brief schema accepts the filled template and rejects missing required fields.
+- Registrar client tests with recorded API fixtures; a test that keys never appear in errors or output.
+- Schema tests: every built-in ruleset, every `registrar-tlds.json` row, and every `tld-reputation.json` row validate; brief schema accepts the filled template and rejects missing required fields.
 - Tool tests through the MCP SDK in-memory transport.
 - Manual live smoke test, `pnpm test:live`: checks `google.com` (expects `registered`) and a random 30-letter `.com` (expects `likely_available`).
 - One eval prompt per skill, run by hand before each release.
@@ -273,6 +307,6 @@ Result status: `registered`, `likely_available`, or `unknown`. Never a plain "av
 
 ## Out of scope for v1
 
-- Live prices and premium flags (needs a registrar API key; Spaceship API is the first candidate for v2).
-- Domain purchase.
+- Live prices and premium flags for users without registrar keys.
+- Registering domains through registrar APIs.
 - Logo and visual identity work.
