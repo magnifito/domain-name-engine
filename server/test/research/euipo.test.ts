@@ -168,3 +168,23 @@ describe('trademarkSearchLinks', () => {
     expect(links[3]?.note).toContain('"acme co"');
   });
 });
+
+describe('parseEuipoSearch shape checks', () => {
+  it('errors when results are listed but none can be parsed', () => {
+    const result = parseEuipoSearch({ trademarks: [{ unexpected: true }], totalElements: 1 });
+    expect(result.kind).toBe('error');
+  });
+
+  it('errors when totalElements is missing or not a number', () => {
+    expect(parseEuipoSearch({ trademarks: [] }).kind).toBe('error');
+    expect(parseEuipoSearch({ trademarks: [], totalElements: '0' }).kind).toBe('error');
+  });
+
+  it('accepts a genuinely empty result', () => {
+    expect(parseEuipoSearch({ trademarks: [], totalElements: 0 })).toEqual({
+      kind: 'ok',
+      total: 0,
+      matches: [],
+    });
+  });
+});

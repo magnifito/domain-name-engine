@@ -74,8 +74,14 @@ export function parseEuipoSearch(body: unknown): EuipoResult {
     return { kind: 'error', reason: 'EUIPO response shape not recognized' };
   }
   const matches = body.trademarks.flatMap((item) => parseMatch(item) ?? []);
-  const total = typeof body.totalElements === 'number' ? body.totalElements : matches.length;
-  return { kind: 'ok', total, matches };
+  if (typeof body.totalElements !== 'number') {
+    return { kind: 'error', reason: 'EUIPO response had no numeric totalElements' };
+  }
+  // Rows that all fail to parse must not read as "no matches".
+  if (body.trademarks.length > 0 && matches.length === 0) {
+    return { kind: 'error', reason: 'EUIPO results could not be parsed' };
+  }
+  return { kind: 'ok', total: body.totalElements, matches };
 }
 
 export function createEuipoClient(
