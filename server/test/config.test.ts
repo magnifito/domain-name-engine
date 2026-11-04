@@ -1,7 +1,8 @@
+import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { engineHome, enginePaths, USER_AGENT } from '../src/config.js';
+import { engineHome, enginePaths, USER_AGENT, VERSION } from '../src/config.js';
 import { errorMessage } from '../src/util/errors.js';
 
 describe('config', () => {
@@ -35,5 +36,12 @@ describe('config', () => {
   it('turns any thrown value into a message', () => {
     expect(errorMessage(new Error('boom'))).toBe('boom');
     expect(errorMessage('text')).toBe('text');
+  });
+
+  it('keeps VERSION in sync with package.json', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      version: string;
+    };
+    expect(VERSION).toBe(pkg.version);
   });
 });
