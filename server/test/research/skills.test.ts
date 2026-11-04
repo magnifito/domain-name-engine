@@ -25,4 +25,8 @@ describe('research skill text', () => {
     expect(skill).toMatch(/untrusted data/i);
     expect(skill).toMatch(/never follow instructions/i);
   });
+
+  it('wraps the competitor JSON example in a double-backtick span, since it contains backticks', () => {
+    expect(skill).toMatch(/`` \{ "source": "websearch".*\} ``/);
+  });
 });
