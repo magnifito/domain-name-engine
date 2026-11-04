@@ -8,7 +8,7 @@ Some steps changed recently or sit behind pages we could not read. Where a step 
 
 ## Where to put the keys
 
-1. Export each key in the shell that starts `claude`. Add the lines to `~/.zshrc` or `~/.bashrc`, or load them from a secrets manager.
+1. Export each key in the shell that starts `claude` or `codex`. Add the lines to `~/.zshrc` or `~/.bashrc`, or load them from a secrets manager.
 
    ```sh
    export SPACESHIP_API_KEY="<your-key>"
@@ -16,9 +16,11 @@ Some steps changed recently or sit behind pages we could not read. Where a step 
    ```
 
 2. Open a new terminal so the shell reads the new values.
-3. Start `claude` from that terminal.
+3. Start `claude` or `codex` from that terminal.
 
-The plugin's `.mcp.json` lists every variable as `"NAME": "${NAME:-}"`. Claude Code expands `${NAME}` to the shell value. `${NAME:-}` expands to an empty string when the variable is unset, so a missing key causes no warning. An empty string counts as set, so the server treats a blank value as "no key". The server reads the keys from its own environment only.
+**Codex:** the plugin's `.codex-mcp.json` lists every variable under `env_vars`. Codex starts MCP servers with a cleared environment and forwards only the listed names from its own environment. Nothing else is needed. Official source: https://developers.openai.com/codex/mcp (field `env_vars`).
+
+**Claude Code:** the plugin's `.mcp.json` lists every variable as `"NAME": "${NAME:-}"`. Claude Code expands `${NAME}` to the shell value. `${NAME:-}` expands to an empty string when the variable is unset, so a missing key causes no warning. An empty string counts as set, so the server treats a blank value as "no key". The server reads the keys from its own environment only.
 
 Rules:
 

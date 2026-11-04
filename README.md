@@ -1,17 +1,28 @@
 # Domain Name Engine
 
-A Claude Code plugin that helps you find a brand name and a domain for it. Claude writes and judges the names. A bundled MCP server checks availability with RDAP, WHOIS, and DNS, researches taken domains, social handles, and trademarks, and compares registrar prices for Spaceship, Namecheap, and Cloudflare.
+A plugin for Claude Code and OpenAI Codex that helps you find a brand name and a domain for it. The agent writes and judges the names. A bundled MCP server checks availability with RDAP, WHOIS, and DNS, researches taken domains, social handles, and trademarks, and compares registrar prices for Spaceship, Namecheap, and Cloudflare.
 
 Everything runs on your machine. No account is needed. Registrar and research API keys are optional.
 
 ## Install
+
+### Claude Code
 
 ```
 /plugin marketplace add magnifito/domain-name-engine
 /plugin install domain-name-engine@magnifito
 ```
 
-Requires Node.js 20 or later. The server ships as one bundled file, so there is no `npm install` step.
+### OpenAI Codex
+
+```sh
+codex plugin marketplace add magnifito/domain-name-engine
+codex plugin add domain-name-engine@magnifito
+```
+
+Start a new Codex session after you install. Codex loads the six skills and the `domain-engine` MCP server. Run a skill by name, for example `$find-domain`, or just ask "help me name my startup". To update, run `codex plugin marketplace upgrade magnifito`.
+
+Both hosts need Node.js 20 or later. The server ships as one bundled file, so there is no `npm install` step.
 
 ## Skills
 
@@ -138,7 +149,7 @@ The script always loads the Cloudflare public file. It loads Spaceship and Namec
 4. `pnpm build`, then commit `server/dist/index.js`. CI fails when the committed bundle differs from a fresh build.
 5. Run the eval prompt for each skill by hand.
 6. Run `claude plugin validate .` from the repository root.
-7. Bump `version` in `.claude-plugin/plugin.json`, tag the release, and push.
+7. Bump `version` in `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` (keep them equal), tag the release, and push.
 
 ## License
 

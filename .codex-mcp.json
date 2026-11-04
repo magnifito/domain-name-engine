@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "domain-engine": {
+      "command": "node",
+      "args": ["./server/dist/index.js"],
+      "cwd": ".",
+      "env_vars": [
+        "DOMAIN_ENGINE_HOME",
+        "SPACESHIP_API_KEY",
+        "SPACESHIP_API_SECRET",
+        "NAMECHEAP_API_USER",
+        "NAMECHEAP_API_KEY",
+        "NAMECHEAP_CLIENT_IP",
+        "CLOUDFLARE_API_TOKEN",
+        "CLOUDFLARE_ACCOUNT_ID",
+        "GITHUB_TOKEN",
+        "REDDIT_CLIENT_ID",
+        "REDDIT_CLIENT_SECRET",
+        "YOUTUBE_API_KEY",
+        "EUIPO_CLIENT_ID",
+        "EUIPO_CLIENT_SECRET",
+        "EUIPO_ENV"
+      ]
+    }
+  }
+}

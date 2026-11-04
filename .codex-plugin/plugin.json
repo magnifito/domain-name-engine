@@ -1,0 +1,19 @@
+{
+  "name": "domain-name-engine",
+  "version": "0.1.0",
+  "description": "Find a strong brand name and domain: LLM-driven naming with RDAP/WHOIS/DNS availability checks, brand research tools, and dated registrar prices for Spaceship, Namecheap, and Cloudflare.",
+  "author": { "name": "Magnifito" },
+  "homepage": "https://github.com/magnifito/domain-name-engine#readme",
+  "repository": "https://github.com/magnifito/domain-name-engine",
+  "license": "MIT",
+  "keywords": ["domain", "naming", "branding", "rdap", "whois", "registrar", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.codex-mcp.json",
+  "interface": {
+    "displayName": "Domain Name Engine",
+    "shortDescription": "Brand names and domains with real availability checks and dated prices",
+    "developerName": "Magnifito",
+    "category": "Productivity",
+    "logo": "./.claude-plugin/icon.png"
+  }
+}
