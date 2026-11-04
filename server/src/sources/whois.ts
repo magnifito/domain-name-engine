@@ -34,18 +34,35 @@ const REGISTERED_PATTERNS = [
   /^\s*registered:/im,
 ];
 
-export function tcpWhoisQuery(timeoutMs = 8000): WhoisQuery {
+const MAX_RESPONSE_BYTES = 65536;
+
+export function tcpWhoisQuery(timeoutMs = 8000, port = 43): WhoisQuery {
   return (server, query) =>
     new Promise((resolve, reject) => {
-      const socket = connect({ host: server, port: 43 });
+      const socket = connect({ host: server, port });
       const chunks: Buffer[] = [];
+      let received = 0;
+      // Overall deadline from connect start; the idle timeout alone lets a slow drip run forever.
+      const deadline = setTimeout(() => {
+        socket.destroy(new Error(`WHOIS ${server} exceeded ${timeoutMs} ms`));
+      }, timeoutMs);
       socket.setTimeout(timeoutMs, () => {
         socket.destroy(new Error(`WHOIS ${server} timed out after ${timeoutMs} ms`));
       });
       socket.on('connect', () => socket.write(`${query}\r\n`));
-      socket.on('data', (chunk: Buffer) => chunks.push(chunk));
+      socket.on('data', (chunk: Buffer) => {
+        received += chunk.length;
+        if (received > MAX_RESPONSE_BYTES) {
+          socket.destroy(
+            new Error(`WHOIS ${server} response exceeded ${MAX_RESPONSE_BYTES} bytes`),
+          );
+          return;
+        }
+        chunks.push(chunk);
+      });
       socket.on('error', reject);
       socket.on('close', (hadError) => {
+        clearTimeout(deadline);
         if (!hadError) resolve(Buffer.concat(chunks).toString('utf8'));
       });
     });
