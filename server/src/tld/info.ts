@@ -15,8 +15,8 @@ import {
 } from './schema.js';
 import type { TldTables } from './table.js';
 
-/** listed: the table has a row. not_sold: a source confirms the registrar does not sell it. */
-export type SaleStatus = 'listed' | 'not_sold' | 'not_in_table';
+/** listed: the table has a verified row. unverified: a row exists but its price is not verified. not_sold: a source confirms the registrar does not sell it. */
+export type SaleStatus = 'listed' | 'unverified' | 'not_sold' | 'not_in_table';
 
 export interface TldRegistrarEntry {
   registrar: RegistrarId;
@@ -80,7 +80,7 @@ function registrarEntry(tld: string, registrar: RegistrarId, tables: TldTables):
   return {
     registrar,
     registrarName: REGISTRAR_NAMES[registrar],
-    sale: 'listed',
+    sale: verified ? 'listed' : 'unverified',
     firstYear: row.firstYear,
     renewal: row.renewal,
     transfer: row.transfer,

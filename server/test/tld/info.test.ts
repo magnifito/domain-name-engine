@@ -44,7 +44,7 @@ describe('tldInfo', () => {
     const info = tldInfo('site', testTables());
     expect(info.registrars.map((r) => [r.registrar, r.sale])).toEqual([
       ['spaceship', 'listed'],
-      ['namecheap', 'listed'],
+      ['namecheap', 'unverified'],
       ['cloudflare', 'listed'],
     ]);
     const cloudflare = info.registrars[2];

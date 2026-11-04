@@ -46,6 +46,7 @@ Ranks the shortlisted names of one project and writes `report.md` into the proje
   - live price: "live price from <registrar> API, <time>"
 - Always show the first-year price and the renewal price side by side. A low first-year price often renews much higher, so never show the first-year price alone.
 - A missing value is written as "unknown". Never estimate or fill in a price. A registrar entry with `priceSource: "none"` has no price: write "unknown" and keep its label.
+- A registrar with `sale: "unverified"` has a table row without a verified price: write "unverified" and keep its label.
 - A registrar with `sale: "not_sold"` does not sell the TLD: write "not sold". With `sale: "not_in_table"`, write "unknown — not in the bundled table".
 - Never add up or compare prices in different currencies, and never convert a currency.
 - A premium name (`premium: true`) never gets the standard table price. Show the live premium price if there is one, otherwise "unknown".
