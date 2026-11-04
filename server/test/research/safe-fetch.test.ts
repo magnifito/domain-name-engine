@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { createServer as createTcpServer } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import { HostLimiter } from '../../src/limiter/limiter.js';
 import { fetchHomepage } from '../../src/research/profile/homepage.js';
@@ -200,4 +201,40 @@ describe('nodeTransport', () => {
       server.close();
     }
   });
+});
+
+describe('nodeTransport hostile responses', () => {
+  it('turns an out-of-range status into an error without crashing or hanging', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    process.on('uncaughtException', onUnhandled);
+    process.on('unhandledRejection', onUnhandled);
+    const server = createTcpServer((socket) => {
+      socket.on('data', () => socket.end('HTTP/1.1 999 Weird\r\ncontent-length: 0\r\n\r\n'));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const http = createGuardedHttp({
+        limiter: new HostLimiter({ minIntervalMs: 0 }),
+        resolve: async () => PUBLIC,
+        transport: (request) =>
+          nodeTransport({
+            ...request,
+            url: new URL(`http://pinned.invalid:${port}/`),
+            address: '127.0.0.1',
+            family: 4,
+            timeoutMs: 2000,
+          }),
+      });
+      const result = await fetchHomepage('example.com', http);
+      expect(result.kind).toBe('error');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('uncaughtException', onUnhandled);
+      process.off('unhandledRejection', onUnhandled);
+      server.close();
+    }
+  }, 10_000);
 });

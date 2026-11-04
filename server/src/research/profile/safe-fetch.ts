@@ -153,15 +153,26 @@ export const nodeTransport: Transport = ({ url, address, family, init, timeoutMs
         signal: AbortSignal.timeout(timeoutMs),
       },
       (res) => {
-        const outHeaders = new Headers();
-        for (const [key, value] of Object.entries(res.headers)) {
-          if (Array.isArray(value)) for (const v of value) outHeaders.append(key, v);
-          else if (value !== undefined) outHeaders.set(key, value);
+        // Nothing thrown here may escape: it would crash the process and leave the promise pending.
+        try {
+          const status = res.statusCode ?? 0;
+          if (status < 200 || status > 599) {
+            throw new Error(`unusable HTTP status ${status}`);
+          }
+          const outHeaders = new Headers();
+          for (const [key, value] of Object.entries(res.headers)) {
+            if (Array.isArray(value)) for (const v of value) outHeaders.append(key, v);
+            else if (value !== undefined) outHeaders.set(key, value);
+          }
+          const body = NULL_BODY_STATUS.has(status)
+            ? null
+            : (Readable.toWeb(res) as ReadableStream);
+          if (body === null) res.resume();
+          resolve(new Response(body, { status, headers: outHeaders }));
+        } catch (error) {
+          res.destroy();
+          reject(error);
         }
-        const status = res.statusCode ?? 0;
-        const body = NULL_BODY_STATUS.has(status) ? null : (Readable.toWeb(res) as ReadableStream);
-        if (body === null) res.resume();
-        resolve(new Response(body, { status, headers: outHeaders }));
       },
     );
     req.on('error', reject);
