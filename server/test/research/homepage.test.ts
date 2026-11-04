@@ -67,6 +67,41 @@ describe('readCapped', () => {
     const text = await readCapped(new Response('a'.repeat(5000)), 1000);
     expect(text).toHaveLength(1000);
   });
+
+  it('stops pulling from an endless stream near the cap', async () => {
+    let pulls = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++;
+        controller.enqueue(new Uint8Array(100).fill(97));
+        if (pulls > 10_000) controller.error(new Error('read far past the cap'));
+      },
+    });
+    const text = await readCapped(new Response(endless), 1000);
+    expect(text).toHaveLength(1000);
+    // The cap is 10 chunks; the stream may prefetch a little (highWaterMark) but must not run on.
+    expect(pulls).toBeLessThanOrEqual(12);
+  });
+});
+
+describe('fetchHomepage body cap', () => {
+  it('applies the default cap to a huge or endless page', async () => {
+    let pulls = 0;
+    const chunk = new Uint8Array(16_384).fill(97);
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++;
+        controller.enqueue(chunk);
+        if (pulls > 10_000) controller.error(new Error('read far past the cap'));
+      },
+    });
+    const http: HttpFetch = async () =>
+      new Response(endless, { headers: { 'content-type': 'text/html' } });
+    const result = await fetchHomepage('acme.com', http);
+    expect(result).toMatchObject({ kind: 'ok', httpStatus: 200 });
+    // 262144 / 16384 = 16 chunks, plus a small prefetch allowance.
+    expect(pulls).toBeLessThanOrEqual(18);
+  });
 });
 
 describe('fetchHomepage', () => {
