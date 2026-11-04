@@ -1,0 +1,44 @@
+{
+  "domains": [
+    {
+      "domain": "zentrova.site",
+      "priceClass": "standard",
+      "prices": {
+        "register": [
+          {
+            "period": { "value": 1, "unit": "y" },
+            "priceInDefaultCurrency": {
+              "finalPrice": { "amount": "1.05", "currency": "EUR" },
+              "regularPrice": { "amount": "11.11", "currency": "EUR" }
+            }
+          }
+        ],
+        "renew": [
+          {
+            "period": { "value": 1, "unit": "y" },
+            "priceInDefaultCurrency": {
+              "finalPrice": { "amount": "11.11", "currency": "EUR" },
+              "regularPrice": { "amount": "11.11", "currency": "EUR" }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "domain": "google.com",
+      "priceClass": "standard",
+      "prices": {
+        "register": [
+          {
+            "period": { "value": 1, "unit": "y" },
+            "priceInDefaultCurrency": {
+              "finalPrice": { "amount": "9.99", "currency": "EUR" },
+              "regularPrice": { "amount": "9.99", "currency": "EUR" }
+            }
+          }
+        ]
+      }
+    },
+    { "domain": "rare.io", "priceClass": "premium", "prices": {} }
+  ]
+}
