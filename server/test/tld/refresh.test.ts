@@ -1,6 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
-import { diffTables, mergeTable, serializeTable } from '../../src/tld/refresh.js';
+import { CF_PUBLIC_PRICES } from '../../src/registrars/cloudflare.js';
+import { SPACESHIP_API } from '../../src/registrars/spaceship.js';
+import {
+  buildJobs,
+  diffTables,
+  mergeTable,
+  runRefresh,
+  serializeTable,
+} from '../../src/tld/refresh.js';
 import { type PriceRow, RegistrarTableSchema } from '../../src/tld/schema.js';
+import { fakeHttp } from '../registrars/fake-http.js';
+import cfPrices from '../registrars/fixtures/cfdomainpricing-prices.json' with { type: 'json' };
 import { testTables } from './fixtures.js';
 
 const fresh: PriceRow = {
@@ -68,5 +78,94 @@ describe('saveTable', () => {
       serializeTable(table),
     );
     vi.doUnmock('../../src/fs/atomic.js');
+  });
+});
+
+describe('runRefresh', () => {
+  const KEY = 'ss-key-1234';
+  const SECRET = 'ss-secret-5678';
+  const creds = { spaceship: { apiKey: KEY, apiSecret: SECRET } };
+  const logger = () => {
+    const lines: string[] = [];
+    return { lines, log: (line: string) => lines.push(line) };
+  };
+
+  it('keeps current rows when a registrar fails and never logs the key', async () => {
+    const { http } = fakeHttp([
+      [CF_PUBLIC_PRICES, () => Response.json(cfPrices)],
+      [
+        SPACESHIP_API,
+        () => Response.json({ detail: `bad credentials ${KEY} ${SECRET}` }, { status: 401 }),
+      ],
+    ]);
+    const current = testTables().registrars;
+    const { lines, log } = logger();
+    const next = await runRefresh(
+      current,
+      buildJobs(creds, http, '2026-11-05'),
+      [KEY, SECRET],
+      log,
+    );
+    expect(next.rows.filter((r) => r.registrar === 'spaceship')).toEqual(
+      current.rows.filter((r) => r.registrar === 'spaceship'),
+    );
+    expect(next.rows.filter((r) => r.registrar === 'cloudflare').map((r) => r.tld)).toEqual([
+      'com',
+      'site',
+    ]);
+    const out = lines.join('\n');
+    expect(out).toContain('spaceship: failed, keeping current rows');
+    expect(out).not.toContain(KEY);
+    expect(out).not.toContain(SECRET);
+  });
+
+  it('reports registrars without keys and keeps their rows', async () => {
+    const { http } = fakeHttp([[CF_PUBLIC_PRICES, () => Response.json(cfPrices)]]);
+    const { lines, log } = logger();
+    await runRefresh(testTables().registrars, buildJobs({}, http, '2026-11-05'), [], log);
+    expect(lines).toContain('spaceship: keys not set, keeping current rows');
+    expect(lines).toContain('namecheap: keys not set, keeping current rows');
+  });
+
+  it('treats an empty result as a failure and keeps current rows', async () => {
+    const current = testTables().registrars;
+    const { lines, log } = logger();
+    const next = await runRefresh(
+      current,
+      [{ registrar: 'cloudflare', run: async () => [] }],
+      [],
+      log,
+    );
+    expect(next).toEqual(mergeTable(current, []));
+    expect(lines.join('\n')).toContain('no rows returned');
+  });
+
+  it('refuses to replace a full-coverage registrar with under half of its rows', async () => {
+    const current = testTables().registrars; // cloudflare is full with 2 rows
+    const extra = ['a', 'b', 'c', 'd'].map(
+      (tld): PriceRow => ({ ...fresh, registrar: 'cloudflare', tld }),
+    );
+    const big = { ...current, rows: [...current.rows, ...extra] };
+    const { lines, log } = logger();
+    const next = await runRefresh(
+      big,
+      [{ registrar: 'cloudflare', run: async () => [{ ...fresh, registrar: 'cloudflare' }] }],
+      [],
+      log,
+    );
+    expect(next).toEqual(mergeTable(big, []));
+    expect(lines.join('\n')).toMatch(/cloudflare: .*keeping current rows.*1 of 6/);
+  });
+
+  it('accepts a full-coverage refresh that is at least half the size', async () => {
+    const current = testTables().registrars;
+    const { log } = logger();
+    const next = await runRefresh(
+      current,
+      [{ registrar: 'cloudflare', run: async () => [{ ...fresh, registrar: 'cloudflare' }] }],
+      [],
+      log,
+    );
+    expect(next.rows.filter((r) => r.registrar === 'cloudflare')).toHaveLength(1);
   });
 });

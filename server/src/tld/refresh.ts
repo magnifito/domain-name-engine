@@ -1,4 +1,10 @@
 import { writeFileAtomic } from '../fs/atomic.js';
+import type { HttpFetch } from '../http/http.js';
+import { fetchCloudflarePublicPrices } from '../registrars/cloudflare.js';
+import { type Credentials, redact } from '../registrars/credentials.js';
+import { fetchNamecheapTldPrices } from '../registrars/namecheap.js';
+import { fetchSpaceshipTldPrices } from '../registrars/spaceship.js';
+import { errorMessage } from '../util/errors.js';
 import type { PriceRow, RegistrarId, RegistrarTable } from './schema.js';
 
 export interface FetchedRegistrar {
@@ -57,4 +63,66 @@ export function serializeTable(table: RegistrarTable): string {
 /** Writes the table atomically so an interrupted refresh never leaves a half-written file. */
 export async function saveTable(path: string, table: RegistrarTable): Promise<void> {
   await writeFileAtomic(path, serializeTable(table));
+}
+
+export interface RefreshJob {
+  registrar: RegistrarId;
+  /** null when the registrar has no keys. */
+  run: (() => Promise<PriceRow[]>) | null;
+}
+
+/** Cloudflare's public file needs no key; the other two need their keys. */
+export function buildJobs(creds: Credentials, http: HttpFetch, today: string): RefreshJob[] {
+  const { spaceship, namecheap } = creds;
+  return [
+    { registrar: 'cloudflare', run: () => fetchCloudflarePublicPrices(http) },
+    {
+      registrar: 'spaceship',
+      run: spaceship ? () => fetchSpaceshipTldPrices(spaceship, http, today) : null,
+    },
+    {
+      registrar: 'namecheap',
+      run: namecheap ? () => fetchNamecheapTldPrices(namecheap, http, today) : null,
+    },
+  ];
+}
+
+/** A fetch smaller than this share of the current rows of a full-coverage registrar is rejected. */
+export const MIN_REFRESH_RATIO = 0.5;
+
+/**
+ * Runs every job. A failed, empty, or suspiciously small result keeps that registrar's current
+ * rows and logs the reason; error text is redacted with `secrets` before it is logged.
+ */
+export async function runRefresh(
+  current: RegistrarTable,
+  jobs: RefreshJob[],
+  secrets: readonly string[],
+  log: (line: string) => void,
+): Promise<RegistrarTable> {
+  const fetched: FetchedRegistrar[] = [];
+  for (const { registrar, run } of jobs) {
+    if (!run) {
+      log(`${registrar}: keys not set, keeping current rows`);
+      continue;
+    }
+    try {
+      const rows = await run();
+      if (rows.length === 0) throw new Error('no rows returned');
+      const before = current.rows.filter((r) => r.registrar === registrar).length;
+      if (
+        current.registrars[registrar].coverage === 'full' &&
+        rows.length < before * MIN_REFRESH_RATIO
+      ) {
+        throw new Error(
+          `only ${rows.length} of ${before} current rows returned, below ${MIN_REFRESH_RATIO * 100}%`,
+        );
+      }
+      fetched.push({ registrar, rows });
+      log(`${registrar}: ${rows.length} TLDs`);
+    } catch (error) {
+      log(`${registrar}: failed, keeping current rows (${redact(errorMessage(error), secrets)})`);
+    }
+  }
+  return mergeTable(current, fetched);
 }
