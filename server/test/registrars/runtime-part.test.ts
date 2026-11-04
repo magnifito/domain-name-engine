@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DiskCache } from '../../src/cache/cache.js';
+import type { HttpFetch } from '../../src/http/http.js';
 import { createRegistrarRuntime, liveClients } from '../../src/registrars/runtime-part.js';
 import { testTables } from '../tld/fixtures.js';
 import { fakeHttp } from './fake-http.js';
@@ -38,14 +39,18 @@ describe('createRegistrarRuntime', () => {
   });
 
   it('never puts key values into a failed live quote', async () => {
-    const d = await deps({
-      CLOUDFLARE_API_TOKEN: 'cf-token-efgh',
-      CLOUDFLARE_ACCOUNT_ID: 'acct-9876',
-    });
-    const rt = createRegistrarRuntime(d);
+    const env = { CLOUDFLARE_API_TOKEN: 'cf-token-efgh', CLOUDFLARE_ACCOUNT_ID: 'acct-9876' };
+    const d = await deps(env);
+    // The failure echoes the request URL and headers, like a verbose network error would.
+    const http: HttpFetch = async (url, init = {}) => {
+      throw new Error(`fetch failed: ${url} ${JSON.stringify(init.headers)}`);
+    };
+    const rt = createRegistrarRuntime({ ...d, http });
     const result = await rt.registrarQuote(['zentrova.site']);
     expect(result.mode).toBe('live');
     const text = JSON.stringify(result);
+    // Prove the fake really leaks: the unredacted error would contain both values.
+    expect(text).toContain('[redacted]');
     expect(text).not.toContain('cf-token-efgh');
     expect(text).not.toContain('acct-9876');
   });
