@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -91,5 +91,15 @@ describe('readJsonWithBackup', () => {
 
   it('throws the raw not-found error for a missing file', async () => {
     await expect(readJsonWithBackup(await file(), parseDoc)).rejects.toSatisfy(isNotFound);
+  });
+
+  it('recovers from the backup when the main file is gone but .bak exists', async () => {
+    const path = await file();
+    await writeJsonWithBackup(path, { n: 1 }, parseDoc);
+    await writeJsonWithBackup(path, { n: 2 }, parseDoc);
+    await rm(path);
+    const read = await readJsonWithBackup(path, parseDoc);
+    expect(read.value).toEqual({ n: 1 });
+    expect(read.recoveredFromBackup).toBe(true);
   });
 });
