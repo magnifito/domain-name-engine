@@ -54,4 +54,8 @@ describe('TLD coverage rule (I1, I2)', () => {
     expect(skill).toMatch(/no `trademark` result yet/);
     expect(find).toMatch(/registered. primary-TLD domains/);
   });
+
+  it('calls project_add_checks once per name (M1)', () => {
+    expect(skill).toMatch(/`project_add_checks` once per name/);
+  });
 });
