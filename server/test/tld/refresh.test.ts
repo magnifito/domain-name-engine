@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { diffTables, mergeTable, serializeTable } from '../../src/tld/refresh.js';
 import { type PriceRow, RegistrarTableSchema } from '../../src/tld/schema.js';
 import { testTables } from './fixtures.js';
@@ -52,5 +52,21 @@ describe('serializeTable', () => {
     const text = serializeTable(testTables().registrars);
     expect(text.endsWith('}\n')).toBe(true);
     expect(JSON.parse(text)).toEqual(testTables().registrars);
+  });
+});
+
+describe('saveTable', () => {
+  it('writes through writeFileAtomic', async () => {
+    vi.resetModules();
+    const writeFileAtomic = vi.fn(async () => {});
+    vi.doMock('../../src/fs/atomic.js', () => ({ writeFileAtomic }));
+    const { saveTable } = await import('../../src/tld/refresh.js');
+    const table = testTables().registrars;
+    await saveTable('/tmp/x/registrar-tlds.json', table);
+    expect(writeFileAtomic).toHaveBeenCalledWith(
+      '/tmp/x/registrar-tlds.json',
+      serializeTable(table),
+    );
+    vi.doUnmock('../../src/fs/atomic.js');
   });
 });

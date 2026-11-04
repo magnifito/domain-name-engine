@@ -1,3 +1,4 @@
+import { writeFileAtomic } from '../fs/atomic.js';
 import type { PriceRow, RegistrarId, RegistrarTable } from './schema.js';
 
 export interface FetchedRegistrar {
@@ -51,4 +52,9 @@ export function diffTables(before: RegistrarTable, after: RegistrarTable): strin
 
 export function serializeTable(table: RegistrarTable): string {
   return `${JSON.stringify(table, null, 2)}\n`;
+}
+
+/** Writes the table atomically so an interrupted refresh never leaves a half-written file. */
+export async function saveTable(path: string, table: RegistrarTable): Promise<void> {
+  await writeFileAtomic(path, serializeTable(table));
 }

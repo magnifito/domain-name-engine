@@ -1,7 +1,7 @@
 // Maintainer script: rebuilds server/data/registrar-tlds.json from official APIs and the
 // public Cloudflare price file. Run with `pnpm refresh:tlds`. Needs network; CI never runs it.
 // Key values are read from env only and are never printed.
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createHttp } from '../src/http/http.js';
 import { HostLimiter } from '../src/limiter/limiter.js';
@@ -9,12 +9,7 @@ import { fetchCloudflarePublicPrices } from '../src/registrars/cloudflare.js';
 import { readCredentials, redact, secretValues } from '../src/registrars/credentials.js';
 import { fetchNamecheapTldPrices } from '../src/registrars/namecheap.js';
 import { fetchSpaceshipTldPrices } from '../src/registrars/spaceship.js';
-import {
-  diffTables,
-  type FetchedRegistrar,
-  mergeTable,
-  serializeTable,
-} from '../src/tld/refresh.js';
+import { diffTables, type FetchedRegistrar, mergeTable, saveTable } from '../src/tld/refresh.js';
 import { type PriceRow, type RegistrarId, RegistrarTableSchema } from '../src/tld/schema.js';
 import { errorMessage } from '../src/util/errors.js';
 
@@ -57,7 +52,7 @@ async function main(): Promise<void> {
   const changes = diffTables(current, next);
   for (const line of changes) console.log(line);
   console.log(`${changes.length} changed rows`);
-  await writeFile(TABLE_PATH, serializeTable(next), 'utf8');
+  await saveTable(TABLE_PATH, next);
 }
 
 main().catch((error: unknown) => {
