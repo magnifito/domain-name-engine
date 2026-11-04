@@ -97,7 +97,11 @@ export async function checkDomain(domain: string, deps: CheckDeps): Promise<Doma
   const cached = await deps.cache.get<DomainCheck>(key);
   if (cached) return cached;
   const result = await resolveStatus(domain, tld, deps);
-  await deps.cache.set(key, result, ttlFor(result));
+  try {
+    await deps.cache.set(key, result, ttlFor(result));
+  } catch {
+    // The cache is only an optimisation; a write failure must not fail the check.
+  }
   return result;
 }
 

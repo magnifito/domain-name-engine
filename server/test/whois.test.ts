@@ -115,4 +115,15 @@ describe('whoisLookup', () => {
     });
     expect(await whoisLookup('acme.co.uk', 'co.uk', d)).toMatchObject({ kind: 'not_found' });
   });
+
+  it('still classifies when the referral cache write fails', async () => {
+    const { deps: d } = await deps({
+      'whois.iana.org xyz': IANA_XYZ,
+      'whois.nic.xyz a.xyz': NOT_FOUND,
+    });
+    d.cache.set = async () => {
+      throw new Error('EROFS');
+    };
+    expect(await whoisLookup('a.xyz', 'xyz', d)).toMatchObject({ kind: 'not_found' });
+  });
 });

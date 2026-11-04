@@ -36,7 +36,11 @@ export async function loadRdapServers(http: HttpFetch, cache: DiskCache): Promis
   const res = await http(IANA_RDAP_BOOTSTRAP);
   if (!res.ok) throw new Error(`IANA RDAP bootstrap returned HTTP ${res.status}`);
   const servers = parseBootstrap((await res.json()) as { services: [string[], string[]][] });
-  await cache.set(BOOTSTRAP_CACHE_KEY, servers, TTL.rdapBootstrap);
+  try {
+    await cache.set(BOOTSTRAP_CACHE_KEY, servers, TTL.rdapBootstrap);
+  } catch {
+    // The cache is only an optimisation; a write failure must not fail the lookup.
+  }
   return servers;
 }
 

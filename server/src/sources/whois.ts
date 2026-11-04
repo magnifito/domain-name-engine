@@ -74,7 +74,11 @@ export async function whoisLookup(
     if (server === undefined) {
       const iana = await deps.limiter.schedule(IANA_WHOIS, () => deps.query(IANA_WHOIS, rootLabel));
       server = parseReferral(iana);
-      await deps.cache.set(cacheKey, server, TTL.rdapBootstrap);
+      try {
+        await deps.cache.set(cacheKey, server, TTL.rdapBootstrap);
+      } catch {
+        // The cache is only an optimisation; a write failure must not fail the lookup.
+      }
     }
     if (!server) return { kind: 'no_server' };
     const target = server;

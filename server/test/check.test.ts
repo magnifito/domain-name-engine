@@ -109,3 +109,16 @@ describe('checkDomains', () => {
     expect(results.map((r) => r.domain)).toEqual(['a.test', 'b.test', 'c.test']);
   });
 });
+
+describe('cache write failures', () => {
+  it('still returns every row when cache.set rejects', async () => {
+    const deps = await makeDeps({ rdap: { kind: 'not_found' }, dns: false });
+    deps.cache.set = async () => {
+      throw new Error('EROFS');
+    };
+    const single = await checkDomain('a.test', deps);
+    expect(single.status).toBe('likely_available');
+    const results = await checkDomains(['a.test', 'b.test', 'c.test'], deps);
+    expect(results.map((r) => r.domain)).toEqual(['a.test', 'b.test', 'c.test']);
+  });
+});
