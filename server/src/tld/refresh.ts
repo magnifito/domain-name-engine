@@ -95,6 +95,9 @@ export function buildJobs(creds: Credentials, http: HttpFetch, today: string): R
 /** A fetch smaller than this share of the current rows of a full-coverage registrar is rejected. */
 export const MIN_REFRESH_RATIO = 0.5;
 
+/** A registrar that is not yet marked full needs at least this many rows to be promoted to full. */
+export const MIN_FULL_ROWS = 100;
+
 /**
  * Runs every job. A failed, empty, or suspiciously small result keeps that registrar's current
  * rows and logs the reason; error text is redacted with `secrets` before it is logged.
@@ -104,6 +107,7 @@ export async function runRefresh(
   jobs: RefreshJob[],
   secrets: readonly string[],
   log: (line: string) => void,
+  minFullRows = MIN_FULL_ROWS,
 ): Promise<RegistrarTable> {
   const fetched: FetchedRegistrar[] = [];
   for (const { registrar, run } of jobs) {
@@ -115,6 +119,11 @@ export async function runRefresh(
       const rows = await run();
       if (rows.length === 0) throw new Error('no rows returned');
       const before = current.rows.filter((r) => r.registrar === registrar).length;
+      if (current.registrars[registrar].coverage !== 'full' && rows.length < minFullRows) {
+        throw new Error(
+          `only ${rows.length} rows returned, below the minimum of ${minFullRows} for a first full refresh`,
+        );
+      }
       if (
         current.registrars[registrar].coverage === 'full' &&
         rows.length < before * MIN_REFRESH_RATIO
