@@ -1,10 +1,14 @@
 import process$1 from "node:process";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { resolveNs } from "node:dns/promises";
-import { connect } from "node:net";
+import { lookup, resolveNs } from "node:dns/promises";
+import { connect, isIP } from "node:net";
+import { request } from "node:http";
+import { request as request$1 } from "node:https";
+import { Readable, pipeline } from "node:stream";
+import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 // \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -142,7 +146,7 @@ function mergeDefs(...defs) {
 function esc(str) {
 	return JSON.stringify(str);
 }
-function slugify(input) {
+function slugify$1(input) {
 	return input.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 const captureStackTrace = "captureStackTrace" in Error ? Error.captureStackTrace : (..._args) => {};
@@ -276,7 +280,7 @@ function safeExtend(schema, shape) {
 	if (!isPlainObject$1(shape)) throw new Error("Invalid input to safeExtend: expected a plain object");
 	return clone(schema, mergeDefs(schema._zod.def, { shape: extended(schema, shape) }));
 }
-function merge(a, b) {
+function merge$1(a, b) {
 	if (!b?._zod?.def) throw new Error("Invalid input to merge: expected an object schema. To merge a plain shape, use `.extend()`.");
 	if (a._zod.def.checks?.length) throw new Error(".merge() cannot be used on object schemas containing refinements. Use .safeExtend() instead.");
 	const newShape = {};
@@ -3740,7 +3744,7 @@ function _toUpperCase() {
 }
 // @__NO_SIDE_EFFECTS__
 function _slugify() {
-	return /* @__PURE__ */ _overwrite((input) => slugify(input));
+	return /* @__PURE__ */ _overwrite((input) => slugify$1(input));
 }
 // @__NO_SIDE_EFFECTS__
 function _array(Class, element, params) {
@@ -5533,7 +5537,7 @@ const ZodObject$1 = /*@__PURE__*/ $constructor("ZodObject", (inst, def) => {
 		return safeExtend(this, incoming);
 	},
 	merge(other) {
-		return merge(this, other);
+		return merge$1(this, other);
 	},
 	pick(mask) {
 		return pick(this, mask);
@@ -5558,6 +5562,14 @@ function object$1(shape, params) {
 		...normalizeParams(params)
 	};
 	return new ZodObject$1(def);
+}
+function strictObject(shape, params) {
+	return new ZodObject$1({
+		type: "object",
+		shape,
+		catchall: never(),
+		...normalizeParams(params)
+	});
 }
 function looseObject(shape, params) {
 	return new ZodObject$1({
@@ -7891,7 +7903,8 @@ var DiskCache = class {
 };
 // src/config.ts
 const VERSION = "0.1.0";
-const USER_AGENT = `domain-name-engine/${VERSION} (+https://github.com/magnifito/domain-name-engine)`;
+const REPO_URL = "https://github.com/magnifito/domain-name-engine";
+const USER_AGENT = `domain-name-engine/${VERSION} (+${REPO_URL})`;
 function engineHome(env = process.env) {
 	return env.DOMAIN_ENGINE_HOME || join(homedir(), ".domain-engine");
 }
@@ -7983,7 +7996,7 @@ function splitDomain(domain) {
 	};
 }
 // src/domain/check.ts
-function ttlFor(check) {
+function ttlFor$1(check) {
 	if (check.status === "registered") return TTL.registered;
 	if (check.status === "likely_available") return TTL.likelyAvailable;
 	return 0;
@@ -8056,7 +8069,7 @@ async function checkDomain(domain, deps) {
 	if (cached) return cached;
 	const result = await resolveStatus(domain, tld, deps);
 	try {
-		await deps.cache.set(key, result, ttlFor(result));
+		await deps.cache.set(key, result, ttlFor$1(result));
 	} catch {}
 	return result;
 }
@@ -8154,24 +8167,1308 @@ function createHttp(opts) {
 		throw new HttpError(`Request to ${host} failed after ${maxTries} tries`, { cause: lastError });
 	};
 }
-// src/sources/dns.ts
-const NO_RECORD_CODES = /* @__PURE__ */ new Set([
-	"ENOTFOUND",
-	"ENODATA",
-	"NXDOMAIN"
-]);
-/** true: NS records exist; false: no NS records; null: the lookup failed. */
-async function hasNameservers(domain, resolve = resolveNs) {
-	try {
-		return (await resolve(domain)).length > 0;
-	} catch (error) {
-		const code = error.code;
-		return code !== void 0 && NO_RECORD_CODES.has(code) ? false : null;
+// src/tld/schema.ts
+const REGISTRARS = [
+	"spaceship",
+	"namecheap",
+	"cloudflare"
+];
+const RegistrarIdSchema = _enum(REGISTRARS);
+const REGISTRAR_NAMES = {
+	spaceship: "Spaceship",
+	namecheap: "Namecheap",
+	cloudflare: "Cloudflare"
+};
+/** Source value for a row whose price nobody has verified yet. */
+const UNVERIFIED = "unverified";
+const TLD = string().regex(/^[a-z0-9-]+(\.[a-z0-9-]+)*$/, "lowercase TLD without a leading dot");
+const ISO_DATE = string().regex(/^\d{4}-\d{2}-\d{2}$/, "date as YYYY-MM-DD");
+const PRICE = number().nonnegative().nullable();
+const PriceRowSchema = strictObject({
+	registrar: RegistrarIdSchema,
+	tld: TLD,
+	firstYear: PRICE,
+	renewal: PRICE,
+	transfer: PRICE,
+	currency: string().regex(/^[A-Z]{3}$/, "ISO 4217 code").nullable(),
+	source: string().min(1),
+	checkedAt: ISO_DATE
+}).superRefine((row, ctx) => {
+	const hasPrice = row.firstYear !== null || row.renewal !== null || row.transfer !== null;
+	if (row.source === "unverified" && hasPrice) ctx.addIssue({
+		code: "custom",
+		message: `${row.registrar} .${row.tld}: unverified row has a price`
+	});
+	if (hasPrice && row.currency === null) ctx.addIssue({
+		code: "custom",
+		message: `${row.registrar} .${row.tld}: price without currency`
+	});
+});
+const RegistrarMetaSchema = strictObject({
+	coverage: _enum(["full", "partial"]),
+	notSold: array(TLD),
+	notListed: array(strictObject({
+		tld: TLD,
+		source: string().min(1),
+		checkedAt: ISO_DATE
+	})).default([]),
+	fullList: strictObject({
+		source: string().min(1),
+		checkedAt: ISO_DATE
+	}).optional(),
+	note: string().min(1)
+}).superRefine((meta, ctx) => {
+	if (meta.coverage === "full" && !meta.fullList) ctx.addIssue({
+		code: "custom",
+		message: "full coverage needs fullList"
+	});
+});
+const RegistrarTableSchema = strictObject({
+	schemaVersion: literal(1),
+	registrars: strictObject({
+		spaceship: RegistrarMetaSchema,
+		namecheap: RegistrarMetaSchema,
+		cloudflare: RegistrarMetaSchema
+	}),
+	rows: array(PriceRowSchema)
+}).superRefine((table, ctx) => {
+	const seen = /* @__PURE__ */ new Set();
+	for (const row of table.rows) {
+		const key = `${row.registrar}:${row.tld}`;
+		if (seen.has(key)) ctx.addIssue({
+			code: "custom",
+			message: `duplicate row ${key}`
+		});
+		seen.add(key);
 	}
+});
+const ReputationRowSchema = strictObject({
+	tld: TLD,
+	reputation: _enum([
+		"good",
+		"mixed",
+		"poor"
+	]),
+	reputationNote: string().min(1),
+	source: string().min(1),
+	checkedAt: ISO_DATE
+});
+const ReputationTableSchema = strictObject({
+	schemaVersion: literal(1),
+	rows: array(ReputationRowSchema)
+}).superRefine((table, ctx) => {
+	const seen = /* @__PURE__ */ new Set();
+	for (const row of table.rows) {
+		if (seen.has(row.tld)) ctx.addIssue({
+			code: "custom",
+			message: `duplicate TLD ${row.tld}`
+		});
+		seen.add(row.tld);
+	}
+});
+// src/tld/pricing.ts
+const UNKNOWN = "unknown";
+const TABLE_NOTE = "Table prices are reference prices from the bundled table and can be out of date; verify at the registrar. Prices are never converted between currencies.";
+function roundMoney(value) {
+	return Math.round(value * 100) / 100;
+}
+/** First year plus two renewals; null when either price is unknown. */
+function threeYearTotal(firstYear, renewal) {
+	if (firstYear === null || renewal === null) return null;
+	return roundMoney(firstYear + 2 * renewal);
+}
+function tablePriceLabel(registrar, checkedAt) {
+	return `reference price from ${REGISTRAR_NAMES[registrar]}, checked ${checkedAt} — verify at registrar`;
+}
+function livePriceLabel(registrar, checkedAt) {
+	return `live price from ${REGISTRAR_NAMES[registrar]} API, ${checkedAt}`;
+}
+/** The cheapest 3-year option per currency. Totals in different currencies are never compared. */
+function cheapestThreeYear(options) {
+	const best = /* @__PURE__ */ new Map();
+	for (const option of options) {
+		if (option.currency === null || option.threeYearTotal === null) continue;
+		const current = best.get(option.currency);
+		if (!current || option.threeYearTotal < current.threeYearTotal) best.set(option.currency, {
+			currency: option.currency,
+			registrar: option.registrar,
+			threeYearTotal: option.threeYearTotal
+		});
+	}
+	return [...best.values()].sort((a, b) => a.currency.localeCompare(b.currency));
+}
+// src/tld/info.ts
+function emptyEntry(registrar, sale, priceLabel) {
+	return {
+		registrar,
+		registrarName: REGISTRAR_NAMES[registrar],
+		sale,
+		firstYear: null,
+		renewal: null,
+		transfer: null,
+		threeYearTotal: null,
+		currency: null,
+		source: null,
+		checkedAt: null,
+		priceLabel
+	};
+}
+function registrarEntry(tld, registrar, tables) {
+	const meta = tables.registrars.registrars[registrar];
+	const row = tables.registrars.rows.find((r) => r.registrar === registrar && r.tld === tld);
+	if (!row) {
+		if (meta.notSold.includes(tld)) return emptyEntry(registrar, "not_sold", `not sold by ${REGISTRAR_NAMES[registrar]}`);
+		const list = meta.notListed.find((n) => n.tld === tld) ?? (meta.coverage === "full" ? meta.fullList : void 0);
+		if (list) return {
+			...emptyEntry(registrar, "not_listed", `not listed by ${list.source} on ${list.checkedAt}`),
+			source: list.source,
+			checkedAt: list.checkedAt
+		};
+		return emptyEntry(registrar, "not_in_table", `${UNKNOWN} — not in the bundled table`);
+	}
+	const verified = row.source !== UNVERIFIED;
+	return {
+		registrar,
+		registrarName: REGISTRAR_NAMES[registrar],
+		sale: verified ? "listed" : "unverified",
+		firstYear: row.firstYear,
+		renewal: row.renewal,
+		transfer: row.transfer,
+		threeYearTotal: threeYearTotal(row.firstYear, row.renewal),
+		currency: row.currency,
+		source: row.source,
+		checkedAt: row.checkedAt,
+		priceLabel: verified ? tablePriceLabel(registrar, row.checkedAt) : `${UNKNOWN} — price not verified, check at ${REGISTRAR_NAMES[registrar]}`
+	};
+}
+function tldInfo(tld, tables) {
+	const registrars = REGISTRARS.map((registrar) => registrarEntry(tld, registrar, tables));
+	const rep = tables.reputation.rows.find((r) => r.tld === tld);
+	return {
+		tld,
+		registrars,
+		cheapestThreeYear: cheapestThreeYear(registrars),
+		reputation: rep ? {
+			reputation: rep.reputation,
+			reputationNote: rep.reputationNote,
+			source: rep.source,
+			checkedAt: rep.checkedAt
+		} : null,
+		notes: [TABLE_NOTE]
+	};
+}
+// data/registrar-tlds.json
+var registrar_tlds_default = {
+	schemaVersion: 1,
+	registrars: {
+		"spaceship": {
+			"coverage": "partial",
+			"notSold": [],
+			"notListed": [],
+			"note": "Seed rows: first-year prices for 8 low-cost TLDs recorded from spaceship.com on 2026-11-04. Renewal prices stay unknown until the first refresh with API keys."
+		},
+		"namecheap": {
+			"coverage": "partial",
+			"notSold": [],
+			"notListed": [],
+			"note": "Seed rows without verified prices. The first refresh with API keys fills them from namecheap.users.getPricing."
+		},
+		"cloudflare": {
+			"coverage": "partial",
+			"notSold": [],
+			"notListed": [{
+				"tld": "bond",
+				"source": "cfdomainpricing.com/prices.json",
+				"checkedAt": "2026-11-04"
+			}, {
+				"tld": "sbs",
+				"source": "cfdomainpricing.com/prices.json",
+				"checkedAt": "2026-11-04"
+			}],
+			"note": "Seed rows from cfdomainpricing.com/prices.json, a free third-party list of Cloudflare Registrar prices in USD. That file has no .bond or .sbs entry, which does not prove Cloudflare does not sell them. Run refresh:tlds to load every TLD."
+		}
+	},
+	rows: [
+		{
+			"registrar": "spaceship",
+			"tld": "bond",
+			"firstYear": 1.28,
+			"renewal": null,
+			"transfer": null,
+			"currency": "EUR",
+			"source": "spaceship.com price list, recorded by maintainer",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "spaceship",
+			"tld": "lol",
+			"firstYear": 1.1,
+			"renewal": null,
+			"transfer": null,
+			"currency": "EUR",
+			"source": "spaceship.com price list, recorded by maintainer",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "spaceship",
+			"tld": "online",
+			"firstYear": 1.05,
+			"renewal": null,
+			"transfer": null,
+			"currency": "EUR",
+			"source": "spaceship.com price list, recorded by maintainer",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "spaceship",
+			"tld": "sbs",
+			"firstYear": .86,
+			"renewal": null,
+			"transfer": null,
+			"currency": "EUR",
+			"source": "spaceship.com price list, recorded by maintainer",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "spaceship",
+			"tld": "site",
+			"firstYear": 1.05,
+			"renewal": null,
+			"transfer": null,
+			"currency": "EUR",
+			"source": "spaceship.com price list, recorded by maintainer",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "spaceship",
+			"tld": "space",
+			"firstYear": 1.05,
+			"renewal": null,
+			"transfer": null,
+			"currency": "EUR",
+			"source": "spaceship.com price list, recorded by maintainer",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "spaceship",
+			"tld": "store",
+			"firstYear": 1.05,
+			"renewal": null,
+			"transfer": null,
+			"currency": "EUR",
+			"source": "spaceship.com price list, recorded by maintainer",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "spaceship",
+			"tld": "xyz",
+			"firstYear": 1.83,
+			"renewal": null,
+			"transfer": null,
+			"currency": "EUR",
+			"source": "spaceship.com price list, recorded by maintainer",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "namecheap",
+			"tld": "bond",
+			"firstYear": null,
+			"renewal": null,
+			"transfer": null,
+			"currency": null,
+			"source": "unverified",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "namecheap",
+			"tld": "lol",
+			"firstYear": null,
+			"renewal": null,
+			"transfer": null,
+			"currency": null,
+			"source": "unverified",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "namecheap",
+			"tld": "online",
+			"firstYear": null,
+			"renewal": null,
+			"transfer": null,
+			"currency": null,
+			"source": "unverified",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "namecheap",
+			"tld": "sbs",
+			"firstYear": null,
+			"renewal": null,
+			"transfer": null,
+			"currency": null,
+			"source": "unverified",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "namecheap",
+			"tld": "site",
+			"firstYear": null,
+			"renewal": null,
+			"transfer": null,
+			"currency": null,
+			"source": "unverified",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "namecheap",
+			"tld": "space",
+			"firstYear": null,
+			"renewal": null,
+			"transfer": null,
+			"currency": null,
+			"source": "unverified",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "namecheap",
+			"tld": "store",
+			"firstYear": null,
+			"renewal": null,
+			"transfer": null,
+			"currency": null,
+			"source": "unverified",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "namecheap",
+			"tld": "xyz",
+			"firstYear": null,
+			"renewal": null,
+			"transfer": null,
+			"currency": null,
+			"source": "unverified",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "ai",
+			"firstYear": 80,
+			"renewal": 80,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-10"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "app",
+			"firstYear": 8.2,
+			"renewal": 14.2,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "co",
+			"firstYear": 30,
+			"renewal": 30,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "com",
+			"firstYear": 10.46,
+			"renewal": 10.46,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "dev",
+			"firstYear": 8.2,
+			"renewal": 12.2,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-09"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "io",
+			"firstYear": 32,
+			"renewal": 50,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "lol",
+			"firstYear": 25.2,
+			"renewal": 20.2,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-07"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "me",
+			"firstYear": 16.56,
+			"renewal": 16.56,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "net",
+			"firstYear": 11.86,
+			"renewal": 11.86,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "online",
+			"firstYear": 4.99,
+			"renewal": 27.7,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "org",
+			"firstYear": 8.5,
+			"renewal": 11.2,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "sh",
+			"firstYear": 45,
+			"renewal": 45,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "shop",
+			"firstYear": 30.2,
+			"renewal": 30.2,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "site",
+			"firstYear": 4.99,
+			"renewal": 27.7,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "space",
+			"firstYear": 4.99,
+			"renewal": 25.2,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-09-23"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "store",
+			"firstYear": 4.99,
+			"renewal": 42.2,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-09"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "tech",
+			"firstYear": 9.99,
+			"renewal": 49.2,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-09-24"
+		},
+		{
+			"registrar": "cloudflare",
+			"tld": "xyz",
+			"firstYear": 12.3,
+			"renewal": 11.2,
+			"transfer": null,
+			"currency": "USD",
+			"source": "cfdomainpricing.com/prices.json",
+			"checkedAt": "2026-10-13"
+		}
+	]
+};
+// data/tld-reputation.json
+var tld_reputation_default = {
+	schemaVersion: 1,
+	rows: [
+		{
+			"tld": "ai",
+			"reputation": "good",
+			"reputationNote": "Country code of Anguilla, widely used by AI products. High first-year and renewal prices.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "app",
+			"reputation": "good",
+			"reputationNote": "Google Registry TLD on the HSTS preload list: sites must serve HTTPS.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "bond",
+			"reputation": "poor",
+			"reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "co",
+			"reputation": "good",
+			"reputationNote": "Country code of Colombia, widely used as a short alternative to .com. Common typo target for .com.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "com",
+			"reputation": "good",
+			"reputationNote": "The default commercial TLD. Most trusted by users and mail filters.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "dev",
+			"reputation": "good",
+			"reputationNote": "Google Registry TLD on the HSTS preload list: sites must serve HTTPS. Popular with developer tools.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "io",
+			"reputation": "good",
+			"reputationNote": "Country code of the British Indian Ocean Territory, widely used by tech startups. Long-term status of the ccTLD has had public debate.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "lol",
+			"reputation": "mixed",
+			"reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "me",
+			"reputation": "good",
+			"reputationNote": "Country code of Montenegro, often used for personal brands.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "net",
+			"reputation": "good",
+			"reputationNote": "Long-standing generic TLD with broad trust.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "online",
+			"reputation": "mixed",
+			"reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "org",
+			"reputation": "good",
+			"reputationNote": "Long-standing generic TLD, associated with non-profits and communities.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "sbs",
+			"reputation": "poor",
+			"reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "sh",
+			"reputation": "good",
+			"reputationNote": "Country code of Saint Helena, popular with developer tools and shell-related names.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "shop",
+			"reputation": "mixed",
+			"reputationNote": "Generic TLD for online stores. Trust varies with how it is used.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "site",
+			"reputation": "mixed",
+			"reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "space",
+			"reputation": "mixed",
+			"reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "store",
+			"reputation": "mixed",
+			"reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "tech",
+			"reputation": "mixed",
+			"reputationNote": "Generic TLD for technology brands. Low first-year promotions draw bulk registrations, so some filters score it lower.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		},
+		{
+			"tld": "xyz",
+			"reputation": "mixed",
+			"reputationNote": "Low-cost TLD that is common in bulk and throwaway registrations. Some spam filters and security tools score it lower, which can hurt email delivery and visitor trust.",
+			"source": "maintainer assessment, not a measured abuse rate; check current abuse statistics before relying on it",
+			"checkedAt": "2026-11-04"
+		}
+	]
+};
+// src/tld/table.ts
+let bundled;
+/** The tables shipped in server/data, validated once on first use. */
+function bundledTables() {
+	bundled ??= {
+		registrars: RegistrarTableSchema.parse(registrar_tlds_default),
+		reputation: ReputationTableSchema.parse(tld_reputation_default)
+	};
+	return bundled;
+}
+// src/registrars/types.ts
+function chunk(items, size) {
+	const out = [];
+	for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+	return out;
+}
+/** Parses a price that may arrive as a string or number; anything else is null. */
+function toPrice(value) {
+	const n = typeof value === "string" ? Number(value) : value;
+	return typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
+}
+function unknownQuote(registrar, domain, checkedAt, reason) {
+	return {
+		registrar,
+		domain,
+		availability: "unknown",
+		premium: null,
+		firstYear: null,
+		renewal: null,
+		currency: null,
+		checkedAt,
+		reason
+	};
+}
+// src/registrars/cloudflare.ts
+const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
+const BATCH$2 = 20;
+function parseCloudflareCheck(json, checkedAt) {
+	const envelope = json;
+	if (envelope.success === false || !envelope.result) {
+		const message = envelope.errors?.map((e) => e.message).join("; ") || "request failed";
+		throw new Error(`Cloudflare API error: ${message}`);
+	}
+	return (envelope.result.domains ?? []).map((item) => {
+		const domain = (item.name ?? "").toLowerCase();
+		const currency = item.pricing?.currency ?? null;
+		const base = {
+			registrar: "cloudflare",
+			domain,
+			premium: item.tier === "premium" || item.reason === "domain_premium",
+			firstYear: toPrice(item.pricing?.registration_cost),
+			renewal: toPrice(item.pricing?.renewal_cost),
+			currency,
+			checkedAt
+		};
+		if (item.registrable === true) return {
+			...base,
+			availability: "available"
+		};
+		if (item.reason === "domain_unavailable") return {
+			...base,
+			availability: "unavailable",
+			reason: item.reason
+		};
+		return {
+			...base,
+			availability: "unknown",
+			reason: item.reason ?? "not registrable"
+		};
+	});
+}
+function createCloudflareClient(creds, deps) {
+	const now = deps.now ?? (() => /* @__PURE__ */ new Date());
+	const endpoint = `${CLOUDFLARE_API}/accounts/${encodeURIComponent(creds.accountId)}/registrar/domain-check`;
+	return {
+		id: "cloudflare",
+		async quote(domains) {
+			const out = [];
+			for (const batch of chunk(domains, BATCH$2)) {
+				const res = await deps.http(endpoint, {
+					method: "POST",
+					headers: {
+						authorization: `Bearer ${creds.apiToken}`,
+						"content-type": "application/json"
+					},
+					body: JSON.stringify({ domains: batch })
+				});
+				let json;
+				try {
+					json = await res.json();
+				} catch {
+					throw new Error(`Cloudflare API returned HTTP ${res.status}`);
+				}
+				const quotes = parseCloudflareCheck(json, now().toISOString());
+				for (const domain of batch) out.push(quotes.find((q) => q.domain === domain) ?? unknownQuote("cloudflare", domain, now().toISOString(), "no check result"));
+			}
+			return out;
+		}
+	};
+}
+// src/registrars/credentials.ts
+const ENV_VARS = {
+	spaceship: ["SPACESHIP_API_KEY", "SPACESHIP_API_SECRET"],
+	namecheap: [
+		"NAMECHEAP_API_USER",
+		"NAMECHEAP_API_KEY",
+		"NAMECHEAP_CLIENT_IP"
+	],
+	cloudflare: ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]
+};
+const LIVE_FEATURES = {
+	spaceship: "live availability, premium flag, and price",
+	namecheap: "live availability, premium flag, and price (the caller IP must be allow-listed)",
+	cloudflare: "live availability, premium tier, and price (Registrar API, beta)"
+};
+function read$1(env, name) {
+	const value = env[name]?.trim();
+	return value && !value.startsWith("${") ? value : void 0;
+}
+/** Reads registrar keys from env. A registrar counts only when all its variables are set. */
+function readCredentials(env = process.env) {
+	const creds = {};
+	const ssKey = read$1(env, "SPACESHIP_API_KEY");
+	const ssSecret = read$1(env, "SPACESHIP_API_SECRET");
+	if (ssKey && ssSecret) creds.spaceship = {
+		apiKey: ssKey,
+		apiSecret: ssSecret
+	};
+	const ncUser = read$1(env, "NAMECHEAP_API_USER");
+	const ncKey = read$1(env, "NAMECHEAP_API_KEY");
+	const ncIp = read$1(env, "NAMECHEAP_CLIENT_IP");
+	if (ncUser && ncKey && ncIp) creds.namecheap = {
+		apiUser: ncUser,
+		apiKey: ncKey,
+		clientIp: ncIp
+	};
+	const cfToken = read$1(env, "CLOUDFLARE_API_TOKEN");
+	const cfAccount = read$1(env, "CLOUDFLARE_ACCOUNT_ID");
+	if (cfToken && cfAccount) creds.cloudflare = {
+		apiToken: cfToken,
+		accountId: cfAccount
+	};
+	return creds;
+}
+/** Every configured value, longest first, so redaction never leaves a partial secret. */
+function secretValues(creds) {
+	const values = [
+		creds.spaceship,
+		creds.namecheap,
+		creds.cloudflare
+	].flatMap((c) => c ? Object.values(c) : []);
+	return [...new Set(values.filter((v) => v.length >= 4))].sort((a, b) => b.length - a.length);
+}
+function redact(text, secrets) {
+	let out = text;
+	for (const secret of secrets) out = out.split(secret).join("[redacted]");
+	return out;
+}
+/** Optional research keys (read by the research tools), listed so one tool shows every key. */
+const OTHER_ENV_VARS = [
+	{
+		name: "GITHUB_TOKEN",
+		usedFor: "check_handles: higher GitHub rate limit"
+	},
+	{
+		name: "REDDIT_CLIENT_ID",
+		usedFor: "check_handles: Reddit username lookup"
+	},
+	{
+		name: "REDDIT_CLIENT_SECRET",
+		usedFor: "check_handles: Reddit username lookup"
+	},
+	{
+		name: "YOUTUBE_API_KEY",
+		usedFor: "check_handles: YouTube handle lookup"
+	},
+	{
+		name: "EUIPO_CLIENT_ID",
+		usedFor: "search_trademarks: EUIPO trademark search"
+	},
+	{
+		name: "EUIPO_CLIENT_SECRET",
+		usedFor: "search_trademarks: EUIPO trademark search"
+	},
+	{
+		name: "EUIPO_ENV",
+		usedFor: "search_trademarks: \"sandbox\" for EUIPO test data"
+	}
+];
+const STATUS_NOTE = "Key values are never returned, logged, or stored. Without keys, registrar_quote returns bundled table prices only.";
+function registrarStatus(env = process.env) {
+	return {
+		registrars: REGISTRARS.map((registrar) => {
+			const envVars = [...ENV_VARS[registrar]];
+			const missing = envVars.filter((name) => !read$1(env, name));
+			return {
+				registrar,
+				name: REGISTRAR_NAMES[registrar],
+				configured: missing.length === 0,
+				envVars,
+				missing,
+				liveFeatures: LIVE_FEATURES[registrar]
+			};
+		}),
+		otherKeys: OTHER_ENV_VARS.map(({ name, usedFor }) => ({
+			name,
+			usedFor,
+			configured: read$1(env, name) !== void 0
+		})),
+		note: STATUS_NOTE
+	};
+}
+// src/registrars/namecheap.ts
+const NAMECHEAP_API = "https://api.namecheap.com/xml.response";
+const BATCH$1 = 50;
+/** Attributes of every <tag ...> element. The Namecheap API puts its data in attributes. */
+function xmlElements(xml, tag) {
+	const out = [];
+	const re = new RegExp(`<${tag}\\s([^>]*?)\\/?>`, "g");
+	for (const match of xml.matchAll(re)) {
+		const attrs = {};
+		for (const a of (match[1] ?? "").matchAll(/([A-Za-z_][\w.-]*)="([^"]*)"/g)) attrs[a[1] ?? ""] = a[2] ?? "";
+		out.push(attrs);
+	}
+	return out;
+}
+/** Error messages when the response status is ERROR, else an empty list. */
+function namecheapErrors(xml) {
+	if (!/<ApiResponse[^>]*Status="ERROR"/i.test(xml)) return [];
+	const errors = [...xml.matchAll(/<Error\b([^>]*)>([\s\S]*?)<\/Error>/g)].map((m) => {
+		const number = /Number="(\d+)"/.exec(m[1] ?? "")?.[1];
+		return `${number ? `${number}: ` : ""}${(m[2] ?? "").trim()}`;
+	});
+	return errors.length > 0 ? errors : ["unknown error"];
+}
+function parseNamecheapCheck(xml) {
+	return xmlElements(xml, "DomainCheckResult").map((a) => {
+		const premium = a.IsPremiumName?.toLowerCase() === "true";
+		return {
+			domain: (a.Domain ?? "").toLowerCase(),
+			available: a.Available?.toLowerCase() === "true",
+			premium,
+			premiumRegistration: premium ? toPrice(a.PremiumRegistrationPrice) : null,
+			premiumRenewal: premium ? toPrice(a.PremiumRenewalPrice) : null,
+			error: a.ErrorNo && a.ErrorNo !== "0" ? a.Description || `error ${a.ErrorNo}` : null
+		};
+	});
+}
+/** 1-year prices from a getPricing response, one entry per category × product. */
+function parseNamecheapPricing(xml) {
+	const out = [];
+	const categories = xml.matchAll(/<ProductCategory\s+Name="([^"]*)"\s*>([\s\S]*?)<\/ProductCategory>/g);
+	for (const [, category = "", categoryBody = ""] of categories) {
+		const products = categoryBody.matchAll(/<Product\s+Name="([^"]*)"\s*>([\s\S]*?)<\/Product>/g);
+		for (const [, product = "", productBody = ""] of products) {
+			const year = xmlElements(productBody, "Price").find((p) => p.Duration === "1" && p.DurationType?.toUpperCase() === "YEAR");
+			const price = toPrice(year?.Price);
+			if (price !== null && year?.Currency) out.push({
+				category: category.toLowerCase(),
+				product: product.toLowerCase(),
+				price,
+				currency: year.Currency
+			});
+		}
+	}
+	return out;
+}
+function url(creds, command, params) {
+	const query = new URLSearchParams({
+		ApiUser: creds.apiUser,
+		ApiKey: creds.apiKey,
+		UserName: creds.apiUser,
+		ClientIp: creds.clientIp,
+		Command: command,
+		...params
+	});
+	return `${NAMECHEAP_API}?${query}`;
+}
+async function call(http, creds, command, params) {
+	const res = await http(url(creds, command, params));
+	if (!res.ok) throw new Error(`Namecheap API returned HTTP ${res.status}`);
+	const xml = await res.text();
+	const errors = namecheapErrors(xml);
+	if (errors.length > 0) throw new Error(`Namecheap API error: ${errors.join("; ")}`);
+	return xml;
+}
+/** The full TLD price list changes rarely; it is cached for a day. */
+const PRICE_LIST_TTL = 864e5;
+function createNamecheapClient(creds, deps) {
+	const now = deps.now ?? (() => /* @__PURE__ */ new Date());
+	async function allPrices(action) {
+		const key = `namecheap-prices:${action}`;
+		const cached = await deps.cache.get(key);
+		if (cached !== void 0) return cached;
+		const prices = parseNamecheapPricing(await call(deps.http, creds, "namecheap.users.getPricing", {
+			ProductType: "DOMAIN",
+			ProductCategory: "DOMAINS",
+			ActionName: action
+		}));
+		await deps.cache.set(key, prices, PRICE_LIST_TTL).catch(() => void 0);
+		return prices;
+	}
+	async function tldPrice(tld, action) {
+		return (await allPrices(action)).find((p) => p.product === tld) ?? null;
+	}
+	return {
+		id: "namecheap",
+		async quote(domains) {
+			const out = [];
+			for (const batch of chunk(domains, BATCH$1)) {
+				const checks = parseNamecheapCheck(await call(deps.http, creds, "namecheap.domains.check", { DomainList: batch.join(",") }));
+				const checkedAt = now().toISOString();
+				for (const domain of batch) {
+					const check = checks.find((c) => c.domain === domain);
+					if (!check) {
+						out.push(unknownQuote("namecheap", domain, checkedAt, "no check result"));
+						continue;
+					}
+					if (check.error) {
+						out.push(unknownQuote("namecheap", domain, checkedAt, check.error));
+						continue;
+					}
+					const tld = domain.slice(domain.indexOf(".") + 1);
+					const register = await tldPrice(tld, "REGISTER");
+					const renew = check.premium ? null : await tldPrice(tld, "RENEW");
+					const currency = register?.currency ?? renew?.currency ?? null;
+					out.push({
+						registrar: "namecheap",
+						domain,
+						availability: check.available ? "available" : "unavailable",
+						premium: check.premium,
+						firstYear: check.premium ? check.premiumRegistration : register?.price ?? null,
+						renewal: check.premium ? check.premiumRenewal : renew?.price ?? null,
+						currency,
+						checkedAt
+					});
+				}
+			}
+			return out;
+		}
+	};
 }
 // src/util/errors.ts
 function errorMessage(error) {
 	return error instanceof Error ? error.message : String(error);
+}
+// src/registrars/quote.ts
+const NO_KEYS_NOTE = "No registrar API keys are set, so these are bundled table prices only. Availability comes from check_domains; premium status is unknown.";
+const LIVE_NOTE = "Live results come from registrar APIs and are cached for 1 hour. Live prices override table prices for the same registrar.";
+const cacheKey = (registrar, domain) => `registrar-live:${registrar}:${domain}`;
+async function liveQuotes(client, domains, deps) {
+	const out = /* @__PURE__ */ new Map();
+	const missing = [];
+	for (const domain of domains) {
+		const cached = await deps.cache.get(cacheKey(client.id, domain));
+		if (cached) out.set(domain, cached);
+		else missing.push(domain);
+	}
+	if (missing.length === 0) return out;
+	let fresh;
+	try {
+		fresh = await client.quote(missing);
+	} catch (error) {
+		const checkedAt = (deps.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
+		const reason = redact(errorMessage(error), deps.secrets);
+		fresh = missing.map((domain) => unknownQuote(client.id, domain, checkedAt, reason));
+	}
+	for (const quote of fresh) {
+		const safe = quote.reason ? {
+			...quote,
+			reason: redact(quote.reason, deps.secrets)
+		} : quote;
+		out.set(safe.domain, safe);
+		if (safe.availability !== "unknown") await deps.cache.set(cacheKey(client.id, safe.domain), safe, TTL.registrarLive).catch(() => void 0);
+	}
+	return out;
+}
+function merge(table, live) {
+	const base = {
+		...table,
+		priceSource: "table",
+		availability: null,
+		premium: null
+	};
+	if (table.firstYear === null && table.renewal === null && table.transfer === null) base.priceSource = "none";
+	if (!live) return base;
+	const withLive = {
+		...base,
+		availability: live.availability,
+		premium: live.premium,
+		...live.reason ? { reason: live.reason } : {}
+	};
+	if (live.currency !== null && (live.firstYear !== null || live.renewal !== null)) return {
+		...withLive,
+		priceSource: "live",
+		firstYear: live.firstYear,
+		renewal: live.renewal,
+		transfer: null,
+		threeYearTotal: threeYearTotal(live.firstYear, live.renewal),
+		currency: live.currency,
+		source: `${table.registrarName} API`,
+		checkedAt: live.checkedAt,
+		priceLabel: livePriceLabel(table.registrar, live.checkedAt)
+	};
+	if (live.premium) return {
+		...withLive,
+		priceSource: "none",
+		firstYear: null,
+		renewal: null,
+		transfer: null,
+		threeYearTotal: null,
+		currency: null,
+		priceLabel: `${UNKNOWN} — premium name, table price does not apply`
+	};
+	return withLive;
+}
+async function quoteDomains(domains, deps) {
+	const parsed = [...new Set(domains.map((d) => d.trim().toLowerCase().replace(/\.$/, "")))].map((domain) => {
+		const { label, tld } = splitDomain(domain);
+		return {
+			domain: `${label}.${tld}`,
+			tld
+		};
+	});
+	const names = parsed.map((p) => p.domain);
+	const live = /* @__PURE__ */ new Map();
+	await Promise.all(deps.clients.map(async (client) => {
+		live.set(client.id, await liveQuotes(client, names, deps));
+	}));
+	const quotes = parsed.map(({ domain, tld }) => {
+		const info = tldInfo(tld, deps.tables);
+		const registrars = info.registrars.map((entry) => merge(entry, live.get(entry.registrar)?.get(domain)));
+		return {
+			domain,
+			tld,
+			registrars,
+			cheapestThreeYear: cheapestThreeYear(registrars),
+			reputation: info.reputation
+		};
+	});
+	const liveRegistrars = deps.clients.map((c) => c.id);
+	return {
+		mode: liveRegistrars.length > 0 ? "live" : "table",
+		liveRegistrars,
+		quotes,
+		notes: [TABLE_NOTE, liveRegistrars.length > 0 ? LIVE_NOTE : NO_KEYS_NOTE]
+	};
+}
+// src/registrars/spaceship.ts
+const SPACESHIP_API = "https://spaceship.dev/api";
+const BATCH = 20;
+/** The 1-year final price of an operation, or null when the operation is missing. */
+function oneYear(entries) {
+	const final = (entries?.find((e) => e.period?.value === 1 && e.period?.unit === "y"))?.priceInDefaultCurrency?.finalPrice;
+	const amount = toPrice(final?.amount);
+	return amount !== null && final?.currency ? {
+		amount,
+		currency: final.currency
+	} : null;
+}
+function parseSpaceshipAvailability(json) {
+	return (json.domains ?? []).map((raw) => {
+		const item = raw;
+		const premium = (operation) => {
+			const p = item.premiumPricing?.find((x) => x.operation === operation);
+			const price = toPrice(p?.price);
+			return price !== null && p?.currency ? {
+				price,
+				currency: p.currency
+			} : null;
+		};
+		return {
+			domain: item.domain.toLowerCase(),
+			result: item.result,
+			premiumRegister: premium("register"),
+			premiumRenew: premium("renew")
+		};
+	});
+}
+function parseSpaceshipDomainPrices(json) {
+	return (json.domains ?? []).map((raw) => {
+		const item = raw;
+		return {
+			domain: item.domain.toLowerCase(),
+			priceClass: item.priceClass ?? null,
+			register: oneYear(item.prices?.register),
+			renew: oneYear(item.prices?.renew),
+			...item.errorCode ? { errorCode: item.errorCode } : {}
+		};
+	});
+}
+function headers(creds) {
+	return {
+		"X-API-Key": creds.apiKey,
+		"X-API-Secret": creds.apiSecret,
+		"content-type": "application/json",
+		accept: "application/json"
+	};
+}
+async function readJson(res) {
+	if (!res.ok) {
+		let detail = "";
+		try {
+			detail = String((await res.json()).detail ?? "");
+		} catch {}
+		throw new Error(`Spaceship API returned HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
+	}
+	return res.json();
+}
+function toQuote(domain, checkedAt, availability, price) {
+	if (!availability) return unknownQuote("spaceship", domain, checkedAt, "no availability result");
+	const premium = availability.premiumRegister !== null || price?.priceClass === "premium";
+	const register = availability.premiumRegister ? {
+		amount: availability.premiumRegister.price,
+		currency: availability.premiumRegister.currency
+	} : premium ? null : price?.register ?? null;
+	const renew = availability.premiumRenew ? {
+		amount: availability.premiumRenew.price,
+		currency: availability.premiumRenew.currency
+	} : premium ? null : price?.renew ?? null;
+	const currency = register?.currency ?? renew?.currency ?? null;
+	return {
+		registrar: "spaceship",
+		domain,
+		availability: availability.result === "available" ? "available" : "unknown",
+		premium,
+		firstYear: register && register.currency === currency ? register.amount : null,
+		renewal: renew && renew.currency === currency ? renew.amount : null,
+		currency,
+		checkedAt,
+		...availability.result === "available" ? {} : { reason: `undocumented Spaceship result: ${availability.result}` }
+	};
+}
+function createSpaceshipClient(creds, deps) {
+	const now = deps.now ?? (() => /* @__PURE__ */ new Date());
+	return {
+		id: "spaceship",
+		async quote(domains) {
+			const out = [];
+			for (const batch of chunk(domains, BATCH)) {
+				const body = JSON.stringify({ domains: batch });
+				const init = {
+					method: "POST",
+					headers: headers(creds),
+					body
+				};
+				const availability = parseSpaceshipAvailability(await readJson(await deps.http(`${SPACESHIP_API}/v1/domains/available`, init)));
+				let prices = [];
+				let priceFailed = false;
+				try {
+					prices = parseSpaceshipDomainPrices(await readJson(await deps.http(`${SPACESHIP_API}/v1/domains/pricing/query`, init)));
+				} catch {
+					priceFailed = true;
+				}
+				const checkedAt = now().toISOString();
+				for (const domain of batch) {
+					const quote = toQuote(domain, checkedAt, availability.find((a) => a.domain === domain), prices.find((p) => p.domain === domain));
+					out.push(priceFailed && !quote.reason ? {
+						...quote,
+						reason: "Spaceship pricing call failed; price unknown"
+					} : quote);
+				}
+			}
+			return out;
+		}
+	};
+}
+// src/registrars/runtime-part.ts
+/** One live client per registrar whose keys are all set, in the fixed registrar order. */
+function liveClients(creds, deps) {
+	const clients = [];
+	if (creds.spaceship) clients.push(createSpaceshipClient(creds.spaceship, deps));
+	if (creds.namecheap) clients.push(createNamecheapClient(creds.namecheap, deps));
+	if (creds.cloudflare) clients.push(createCloudflareClient(creds.cloudflare, deps));
+	return clients;
+}
+function createRegistrarRuntime(deps) {
+	const creds = readCredentials(deps.env);
+	const secrets = secretValues(creds);
+	const clients = liveClients(creds, deps);
+	const tables = () => deps.tables ?? bundledTables();
+	return {
+		tldInfo: (tld) => tldInfo(tld, tables()),
+		registrarQuote: (domains) => quoteDomains(domains, {
+			tables: tables(),
+			clients,
+			cache: deps.cache,
+			secrets,
+			now: deps.now
+		}),
+		registrarStatus: () => registrarStatus(deps.env)
+	};
 }
 // src/sources/rdap.ts
 const IANA_RDAP_BOOTSTRAP = "https://data.iana.org/rdap/dns.json";
@@ -8321,9 +9618,2538 @@ async function whoisLookup(domain, tld, deps) {
 		};
 	}
 }
+// src/research/handles/checkers.ts
+function unknownProbe(source, reason) {
+	return {
+		status: "unknown",
+		confidence: "low",
+		method: "api",
+		source,
+		reason
+	};
+}
+/** A platform without a reliable open method: no request, always unknown. */
+function manualChecker(reason) {
+	return async () => ({
+		status: "unknown",
+		confidence: "low",
+		method: "manual",
+		source: "none",
+		reason
+	});
+}
+/** 2xx means taken, 404 means likely available, anything else is unknown. */
+async function statusProbe(http, url, init, source, notFoundReason) {
+	try {
+		const res = await http(url, init);
+		res.body?.cancel().catch(() => void 0);
+		if (res.ok) return {
+			status: "taken",
+			confidence: "high",
+			method: "api",
+			source
+		};
+		if (res.status === 404) return {
+			status: "likely_available",
+			confidence: "medium",
+			method: "api",
+			source,
+			reason: notFoundReason
+		};
+		return unknownProbe(source, `${source} returned HTTP ${res.status}`);
+	} catch (error) {
+		return unknownProbe(source, errorMessage(error));
+	}
+}
+function githubChecker(http, token) {
+	const headers = {
+		accept: "application/vnd.github+json",
+		"x-github-api-version": "2022-11-28"
+	};
+	if (token) headers.authorization = `Bearer ${token}`;
+	return (handle) => statusProbe(http, `https://api.github.com/users/${encodeURIComponent(handle)}`, {
+		method: "HEAD",
+		headers
+	}, "github-api", "No GitHub user or organization has this name. GitHub may still reserve some names.");
+}
+function npmChecker(http) {
+	return (handle) => statusProbe(http, `https://registry.npmjs.org/${encodeURIComponent(handle)}`, { method: "HEAD" }, "npm-registry", "No npm package has this name. npm may still reject names too similar to existing packages.");
+}
+function pypiChecker(http) {
+	return (handle) => statusProbe(http, `https://pypi.org/simple/${encodeURIComponent(handle)}/`, {
+		method: "HEAD",
+		headers: { accept: "application/vnd.pypi.simple.v1+json" }
+	}, "pypi-simple-api", "No PyPI project has this normalized name. PyPI may still block prohibited or previously used names.");
+}
+// src/research/handles/keyed-checkers.ts
+const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
+const REDDIT_USER_AGENT = `nodejs:domain-name-engine:${VERSION} (+${REPO_URL})`;
+function redditChecker(http, creds, now = Date.now) {
+	let token;
+	const getToken = async (force) => {
+		if (!force && token && token.expiresAt > now()) return token.value;
+		const basic = Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString("base64");
+		const res = await http(REDDIT_TOKEN_URL, {
+			method: "POST",
+			headers: {
+				authorization: `Basic ${basic}`,
+				"content-type": "application/x-www-form-urlencoded",
+				"user-agent": REDDIT_USER_AGENT
+			},
+			body: "grant_type=client_credentials"
+		});
+		if (!res.ok) throw new Error(`Reddit token request returned HTTP ${res.status}`);
+		const body = await res.json();
+		if (typeof body.access_token !== "string") throw new Error("Reddit token response had no access_token");
+		const lifetime = typeof body.expires_in === "number" ? body.expires_in : 3600;
+		token = {
+			value: body.access_token,
+			expiresAt: now() + Math.max(lifetime - 60, 0) * 1e3
+		};
+		return token.value;
+	};
+	const lookup = async (handle, force) => {
+		let bearer;
+		try {
+			bearer = await getToken(force);
+		} catch (error) {
+			return unknownProbe("reddit-api", errorMessage(error));
+		}
+		return statusProbe(http, `https://oauth.reddit.com/user/${encodeURIComponent(handle)}/about`, { headers: {
+			authorization: `Bearer ${bearer}`,
+			"user-agent": REDDIT_USER_AGENT
+		} }, "reddit-api", "No Reddit account has this name. Deleted accounts also return 404 and their names cannot be reused.");
+	};
+	return async (handle) => {
+		const probe = await lookup(handle, false);
+		if (probe.status === "unknown" && probe.reason === "reddit-api returned HTTP 401") {
+			token = void 0;
+			return lookup(handle, true);
+		}
+		return probe;
+	};
+}
+function youtubeChecker(http, apiKey) {
+	return async (handle) => {
+		const url = `https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${encodeURIComponent(`@${handle}`)}`;
+		try {
+			const res = await http(url, { headers: { "x-goog-api-key": apiKey } });
+			if (!res.ok) {
+				res.body?.cancel().catch(() => void 0);
+				return unknownProbe("youtube-data-api", `youtube-data-api returned HTTP ${res.status}`);
+			}
+			const body = await res.json();
+			if (Array.isArray(body.items) && body.items.length > 0) return {
+				status: "taken",
+				confidence: "high",
+				method: "api",
+				source: "youtube-data-api"
+			};
+			return {
+				status: "likely_available",
+				confidence: "medium",
+				method: "api",
+				source: "youtube-data-api",
+				reason: "No YouTube channel uses this handle. YouTube may still reserve or block it."
+			};
+		} catch (error) {
+			return unknownProbe("youtube-data-api", errorMessage(error));
+		}
+	};
+}
+// src/research/handles/platforms.ts
+const PLATFORMS = [
+	"github",
+	"npm",
+	"pypi",
+	"reddit",
+	"youtube",
+	"x",
+	"instagram",
+	"tiktok",
+	"linkedin"
+];
+const lower = (handle) => handle.toLowerCase();
+const PLATFORM_RULES = {
+	github: {
+		pattern: /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/,
+		rule: "1-39 letters, digits, or single inner hyphens",
+		normalize: lower,
+		profileUrl: (h) => `https://github.com/${h}`
+	},
+	npm: {
+		pattern: /^[a-z0-9][a-z0-9._~-]{0,213}$/,
+		rule: "up to 214 lower-case URL-safe characters, not starting with \".\" or \"_\"",
+		normalize: lower,
+		profileUrl: (h) => `https://www.npmjs.com/package/${h}`
+	},
+	pypi: {
+		pattern: /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/,
+		rule: "letters, digits, \".\", \"_\", or \"-\", starting and ending with a letter or digit",
+		normalize: (h) => h.toLowerCase().replace(/[-_.]+/g, "-"),
+		profileUrl: (h) => `https://pypi.org/project/${h}/`
+	},
+	reddit: {
+		pattern: /^[a-z0-9_-]{3,20}$/,
+		rule: "3-20 letters, digits, \"_\" or \"-\"",
+		normalize: lower,
+		profileUrl: (h) => `https://www.reddit.com/user/${h}/`
+	},
+	youtube: {
+		pattern: /^[a-z0-9._-]{3,30}$/,
+		rule: "3-30 letters, digits, \".\", \"_\" or \"-\"",
+		normalize: lower,
+		profileUrl: (h) => `https://www.youtube.com/@${h}`
+	},
+	x: {
+		pattern: /^[a-z0-9_]{4,15}$/,
+		rule: "4-15 letters, digits, or \"_\"",
+		normalize: lower,
+		profileUrl: (h) => `https://x.com/${h}`
+	},
+	instagram: {
+		pattern: /^[a-z0-9._]{1,30}$/,
+		rule: "1-30 letters, digits, \".\" or \"_\"",
+		normalize: lower,
+		profileUrl: (h) => `https://www.instagram.com/${h}/`
+	},
+	tiktok: {
+		pattern: /^[a-z0-9._]{2,24}$/,
+		rule: "2-24 letters, digits, \".\" or \"_\"",
+		normalize: lower,
+		profileUrl: (h) => `https://www.tiktok.com/@${h}`
+	},
+	linkedin: {
+		pattern: /^[a-z0-9-]{3,100}$/,
+		rule: "3-100 letters, digits, or \"-\" (company page URL)",
+		normalize: lower,
+		profileUrl: (h) => `https://www.linkedin.com/company/${h}/`
+	}
+};
+function normalizeHandle(platform, raw) {
+	const rule = PLATFORM_RULES[platform];
+	const handle = rule.normalize(raw.trim().replace(/^@/, ""));
+	if (!rule.pattern.test(handle)) return {
+		ok: false,
+		reason: `"${raw}" is not a valid ${platform} name: ${rule.rule}.`
+	};
+	return {
+		ok: true,
+		handle
+	};
+}
+function profileUrl(platform, handle) {
+	return PLATFORM_RULES[platform].profileUrl(handle);
+}
+// src/research/handles/check.ts
+const MANUAL_REASONS = {
+	reddit: "Reddit refuses logged-out API requests (HTTP 403, checked 2026-11-04). Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET for an approved Reddit app, or open the profile URL.",
+	youtube: "YouTube handle lookup needs the YouTube Data API. Set YOUTUBE_API_KEY, or open the profile URL.",
+	x: "X has no free lookup API and its pages block automated clients (checked 2026-11-04). Open the profile URL.",
+	instagram: "Instagram has no open lookup API and its pages block automated clients (checked 2026-11-04). Open the profile URL.",
+	tiktok: "TikTok has no open lookup API and its pages block automated clients (checked 2026-11-04). Open the profile URL.",
+	linkedin: "LinkedIn has no open lookup API and its pages block automated clients (checked 2026-11-04). Open the company URL."
+};
+function createCheckers(http, keys) {
+	return {
+		github: githubChecker(http, keys.githubToken),
+		npm: npmChecker(http),
+		pypi: pypiChecker(http),
+		reddit: keys.reddit ? redditChecker(http, keys.reddit) : manualChecker(MANUAL_REASONS.reddit),
+		youtube: keys.youtubeApiKey ? youtubeChecker(http, keys.youtubeApiKey) : manualChecker(MANUAL_REASONS.youtube),
+		x: manualChecker(MANUAL_REASONS.x),
+		instagram: manualChecker(MANUAL_REASONS.instagram),
+		tiktok: manualChecker(MANUAL_REASONS.tiktok),
+		linkedin: manualChecker(MANUAL_REASONS.linkedin)
+	};
+}
+async function checkOne(platform, raw, deps) {
+	const checkedAt = (deps.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
+	const normalized = normalizeHandle(platform, raw);
+	if (!normalized.ok) return {
+		platform,
+		handle: raw.trim(),
+		status: "invalid",
+		confidence: "high",
+		method: "none",
+		source: "none",
+		checkedAt,
+		reason: normalized.reason
+	};
+	const { handle } = normalized;
+	const key = `handle:${platform}:${handle}`;
+	const cached = await deps.cache.get(key);
+	if (cached) return cached;
+	const result = {
+		platform,
+		handle,
+		...await deps.checkers[platform](handle),
+		checkedAt,
+		profileUrl: profileUrl(platform, handle)
+	};
+	if (result.status === "taken" || result.status === "likely_available") try {
+		await deps.cache.set(key, result, TTL.handles);
+	} catch {}
+	return result;
+}
+async function checkHandles(handles, platforms, deps, concurrency = 4) {
+	const jobs = handles.flatMap((handle) => platforms.map((platform) => ({
+		handle,
+		platform
+	})));
+	const results = new Array(jobs.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < jobs.length) {
+			const index = next++;
+			const job = jobs[index];
+			results[index] = await checkOne(job.platform, job.handle, deps);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, worker));
+	return results;
+}
+// src/research/keys.ts
+function read(env, name) {
+	const value = env[name]?.trim();
+	return value ? value : void 0;
+}
+function readResearchKeys(env) {
+	const keys = {};
+	const githubToken = read(env, "GITHUB_TOKEN");
+	if (githubToken) keys.githubToken = githubToken;
+	const redditId = read(env, "REDDIT_CLIENT_ID");
+	const redditSecret = read(env, "REDDIT_CLIENT_SECRET");
+	if (redditId && redditSecret) keys.reddit = {
+		clientId: redditId,
+		clientSecret: redditSecret
+	};
+	const youtubeApiKey = read(env, "YOUTUBE_API_KEY");
+	if (youtubeApiKey) keys.youtubeApiKey = youtubeApiKey;
+	const euipoId = read(env, "EUIPO_CLIENT_ID");
+	const euipoSecret = read(env, "EUIPO_CLIENT_SECRET");
+	if (euipoId && euipoSecret) keys.euipo = {
+		clientId: euipoId,
+		clientSecret: euipoSecret,
+		env: read(env, "EUIPO_ENV") === "sandbox" ? "sandbox" : "production"
+	};
+	return keys;
+}
+// src/research/profile/safe-fetch.ts
+/** Thrown when a URL must not be requested: it targets a private network or an odd port or scheme. */
+var BlockedError = class extends Error {
+	host;
+	detail;
+	name = "BlockedError";
+	constructor(host, detail) {
+		super(`blocked: ${host} ${detail}`);
+		this.host = host;
+		this.detail = detail;
+	}
+};
+const PRIVATE_ADDRESS_DETAIL = "resolves to a private or reserved address";
+function ipv4Bytes(ip) {
+	const parts = ip.split(".");
+	if (parts.length !== 4) return void 0;
+	const bytes = parts.map((p) => /^\d{1,3}$/.test(p) ? Number(p) : NaN);
+	return bytes.every((b) => b >= 0 && b <= 255) ? bytes : void 0;
+}
+function blockedIpv4(b) {
+	const [a = 0, b1 = 0, b2 = 0] = b;
+	return a === 0 || a === 10 || a === 127 || a === 100 && b1 >= 64 && b1 <= 127 || a === 169 && b1 === 254 || a === 172 && b1 >= 16 && b1 <= 31 || a === 192 && b1 === 168 || a === 192 && b1 === 0 && (b2 === 0 || b2 === 2) || a === 198 && (b1 === 18 || b1 === 19) || a === 198 && b1 === 51 && b2 === 100 || a === 203 && b1 === 0 && b2 === 113 || a >= 224;
+}
+/** Expands an IPv6 text address to 16 bytes, or undefined when it is malformed. */
+function ipv6Bytes(input) {
+	let text = input.split("%")[0] ?? "";
+	const tail = text.match(/(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+	if (tail) {
+		const v4 = ipv4Bytes(tail);
+		if (!v4) return void 0;
+		const hex = (hi, lo) => (hi << 8 | lo).toString(16);
+		text = `${text.slice(0, -tail.length)}${hex(v4[0] ?? 0, v4[1] ?? 0)}:${hex(v4[2] ?? 0, v4[3] ?? 0)}`;
+	}
+	const halves = text.split("::");
+	if (halves.length > 2) return void 0;
+	const parse = (part) => {
+		if (part === "") return [];
+		const groups = part.split(":");
+		if (!groups.every((g) => /^[0-9a-f]{1,4}$/i.test(g))) return void 0;
+		return groups.flatMap((g) => [Number.parseInt(g, 16) >> 8, Number.parseInt(g, 16) & 255]);
+	};
+	const head = parse(halves[0] ?? "");
+	const rest = halves.length === 2 ? parse(halves[1] ?? "") : [];
+	if (!head || !rest) return void 0;
+	if (halves.length === 1) return head.length === 16 ? head : void 0;
+	const fill = 16 - head.length - rest.length;
+	if (fill < 0) return void 0;
+	return [
+		...head,
+		...new Array(fill).fill(0),
+		...rest
+	];
+}
+function blockedIpv6(bytes) {
+	const first = bytes[0] ?? 0;
+	const second = bytes[1] ?? 0;
+	const zeroPrefix = (n) => bytes.slice(0, n).every((b) => b === 0);
+	if (zeroPrefix(12)) return true;
+	if (zeroPrefix(10) && bytes[10] === 255 && bytes[11] === 255) return blockedIpv4(bytes.slice(12));
+	if (first === 0 && second === 100 && bytes[2] === 255 && bytes[3] === 155) {
+		if (bytes.slice(4, 12).every((b) => b === 0)) return blockedIpv4(bytes.slice(12));
+	}
+	if (bytes.slice(0, 8).every((b) => b === 0) && bytes[8] === 255 && bytes[9] === 255) {
+		if (bytes[10] === 0 && bytes[11] === 0) return true;
+	}
+	if (first === 0 && second === 100 && bytes[2] === 255 && bytes[3] === 155) {
+		if (bytes[4] === 0 && bytes[5] === 1) return true;
+	}
+	if (first === 32 && second === 2) return blockedIpv4(bytes.slice(2, 6));
+	if ((first & 254) === 252) return true;
+	if (first === 254 && (second & 192) >= 128) return true;
+	if (first === 255) return true;
+	return false;
+}
+/** True when the address is loopback, private, link-local, multicast, reserved, or not an IP at all. */
+function isBlockedAddress(ip) {
+	const bare = ip.replace(/^\[|\]$/g, "");
+	const kind = isIP(bare);
+	if (kind === 4) {
+		const bytes = ipv4Bytes(bare);
+		return bytes === void 0 || blockedIpv4(bytes);
+	}
+	if (kind === 6) {
+		const bytes = ipv6Bytes(bare);
+		return bytes === void 0 || blockedIpv6(bytes);
+	}
+	return true;
+}
+const NULL_BODY_STATUS = /* @__PURE__ */ new Set([
+	101,
+	204,
+	205,
+	304
+]);
+/** One request pinned to `address`. Redirects are returned, never followed. */
+const nodeTransport = ({ url, address, family, init, timeoutMs }) => new Promise((resolve, reject) => {
+	const headers = {};
+	new Headers(init.headers).forEach((value, key) => {
+		headers[key] = value;
+	});
+	headers["accept-encoding"] = "identity";
+	const send = url.protocol === "https:" ? request$1 : request;
+	const hostname = url.hostname.replace(/^\[|\]$/g, "");
+	const req = send({
+		hostname,
+		port: url.port === "" ? void 0 : Number(url.port),
+		path: `${url.pathname}${url.search}`,
+		method: init.method ?? "GET",
+		headers,
+		servername: isIP(hostname) === 0 ? hostname : void 0,
+		lookup: (_host, options, callback) => {
+			if (typeof options === "object" && options.all) callback(null, [{
+				address,
+				family
+			}]);
+			else callback(null, address, family);
+		},
+		signal: AbortSignal.timeout(timeoutMs)
+	}, (res) => {
+		try {
+			const status = res.statusCode ?? 0;
+			if (status < 200 || status > 599) throw new Error(`unusable HTTP status ${status}`);
+			const outHeaders = new Headers();
+			for (const [key, value] of Object.entries(res.headers)) if (Array.isArray(value)) for (const v of value) outHeaders.append(key, v);
+			else if (value !== void 0) outHeaders.set(key, value);
+			const encoding = String(res.headers["content-encoding"] ?? "").trim().toLowerCase();
+			const decoder = encoding === "gzip" || encoding === "x-gzip" ? createGunzip() : encoding === "deflate" ? createInflate() : encoding === "br" ? createBrotliDecompress() : void 0;
+			let source = res;
+			if (decoder) {
+				outHeaders.delete("content-encoding");
+				outHeaders.delete("content-length");
+				source = pipeline(res, decoder, () => void 0);
+			}
+			const body = NULL_BODY_STATUS.has(status) ? null : Readable.toWeb(source);
+			if (body === null) res.resume();
+			resolve(new Response(body, {
+				status,
+				headers: outHeaders
+			}));
+		} catch (error) {
+			res.destroy();
+			reject(error);
+		}
+	});
+	req.on("error", reject);
+	req.end();
+});
+async function defaultResolve(host) {
+	return lookup(host.replace(/^\[|\]$/g, ""), {
+		all: true,
+		verbatim: true
+	});
+}
+/**
+* An HttpFetch for untrusted URLs: http(s) on default ports only, every resolved address must be
+* public, the connection is pinned to the vetted address, there are no retries and no automatic
+* redirects. Each request goes through the shared per-host limiter.
+*/
+function createGuardedHttp(opts) {
+	const resolve = opts.resolve ?? defaultResolve;
+	const transport = opts.transport ?? nodeTransport;
+	const timeoutMs = opts.timeoutMs ?? 8e3;
+	return async (rawUrl, init = {}) => {
+		const url = new URL(rawUrl);
+		const host = url.hostname.replace(/^\[|\]$/g, "");
+		if (url.protocol !== "http:" && url.protocol !== "https:") throw new BlockedError(host || rawUrl, "uses an unsupported URL scheme");
+		if (url.port !== "") throw new BlockedError(host, "uses a non-default port");
+		if (url.username !== "" || url.password !== "") throw new BlockedError(host, "has credentials in the URL");
+		const addresses = await resolve(host);
+		if (addresses.length === 0 || addresses.some((a) => isBlockedAddress(a.address))) throw new BlockedError(host, PRIVATE_ADDRESS_DETAIL);
+		const [first] = addresses;
+		if (!first) throw new BlockedError(host, PRIVATE_ADDRESS_DETAIL);
+		const headers = new Headers(init.headers);
+		if (!headers.has("user-agent")) headers.set("user-agent", USER_AGENT);
+		return opts.limiter.schedule(url.host, () => transport({
+			url,
+			address: first.address,
+			family: first.family === 6 ? 6 : 4,
+			init: {
+				...init,
+				headers,
+				redirect: "manual"
+			},
+			timeoutMs
+		}));
+	};
+}
+// src/research/profile/homepage.ts
+const MAX_BODY_BYTES = 262144;
+const FOR_SALE_PATTERNS = [
+	/\bthis domain (?:name )?(?:is|may be) for sale\b/i,
+	/\bdomain (?:name )?(?:is )?for sale\b/i,
+	/\bbuy this domain\b/i,
+	/\bmake (?:an|us an) offer\b/i,
+	/\binquire about this domain\b/i,
+	/\bget this domain\b/i
+];
+const PARKED_PATTERNS = [
+	/\bthis domain (?:name )?(?:is|has been) parked\b/i,
+	/\bparked free\b/i,
+	/\bdomain parking\b/i,
+	/\brelated searches\b/i
+];
+const MARKETPLACE_HOSTS = [
+	"afternic.com",
+	"dan.com",
+	"sedo.com",
+	"hugedomains.com",
+	"godaddy.com",
+	"atom.com",
+	"squadhelp.com",
+	"brandbucket.com",
+	"buydomains.com",
+	"undeveloped.com"
+];
+function hostOf(url) {
+	try {
+		return new URL(url).hostname.toLowerCase();
+	} catch {
+		return;
+	}
+}
+function decodeEntities(text) {
+	return text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;|&apos;/g, "'");
+}
+function extractTitle(html) {
+	const raw = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+	if (raw === void 0) return void 0;
+	return decodeEntities(raw).replace(/\s+/g, " ").trim().slice(0, 200) || void 0;
+}
+/** `domain` is the profiled domain: a marketplace is only a for-sale signal when the page is elsewhere. */
+function analyzePage(html, finalUrl, domain) {
+	const text = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
+	const host = hostOf(finalUrl);
+	const isProfiled = domain !== void 0 && (host === domain || host === `www.${domain}`);
+	const onMarketplace = host !== void 0 && !isProfiled && MARKETPLACE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+	return {
+		title: extractTitle(html),
+		forSale: onMarketplace || FOR_SALE_PATTERNS.some((pattern) => pattern.test(text)),
+		parkedPage: PARKED_PATTERNS.some((pattern) => pattern.test(text))
+	};
+}
+/** Reads at most `limit` bytes of the body, then cancels the rest of the stream. */
+async function readCapped(res, limit = MAX_BODY_BYTES) {
+	if (!res.body) return "";
+	const reader = res.body.getReader();
+	const chunks = [];
+	let size = 0;
+	while (size < limit) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		chunks.push(value);
+		size += value.byteLength;
+	}
+	reader.cancel().catch(() => void 0);
+	return new TextDecoder().decode(Buffer.concat(chunks).subarray(0, limit));
+}
+const REDIRECT_STATUSES = /* @__PURE__ */ new Set([
+	301,
+	302,
+	303,
+	307,
+	308
+]);
+var TooManyRedirects = class extends Error {};
+/** Follows redirects by hand so the fetcher can vet every hop. */
+async function getFollowing(start, http) {
+	let url = start;
+	for (let hop = 0;; hop++) {
+		let res;
+		try {
+			res = await http(url, {
+				redirect: "manual",
+				headers: { accept: "text/html,application/xhtml+xml" }
+			});
+		} catch (error) {
+			if (error instanceof BlockedError && hop > 0) throw new BlockedError(`redirect to ${error.host}`, error.detail);
+			throw error;
+		}
+		const location = res.headers.get("location");
+		if (!REDIRECT_STATUSES.has(res.status) || !location) return {
+			res,
+			finalUrl: url
+		};
+		res.body?.cancel().catch(() => void 0);
+		if (hop >= 5) throw new TooManyRedirects(`more than 5 redirects`);
+		url = new URL(location, url).href;
+	}
+}
+/**
+* One homepage request per scheme: https first, http only when https fails at the network level.
+* `http` must refuse private targets (see createGuardedHttp) and must not follow redirects itself.
+*/
+async function fetchHomepage(domain, http) {
+	let reason = "no response";
+	for (const url of [`https://${domain}/`, `http://${domain}/`]) try {
+		const { res, finalUrl } = await getFollowing(url, http);
+		const isHtml = (res.headers.get("content-type") ?? "").toLowerCase().includes("html");
+		let html = "";
+		if (isHtml) html = await readCapped(res);
+		else res.body?.cancel().catch(() => void 0);
+		return {
+			kind: "ok",
+			url,
+			finalUrl,
+			httpStatus: res.status,
+			...analyzePage(html, finalUrl, domain)
+		};
+	} catch (error) {
+		if (error instanceof BlockedError || error instanceof TooManyRedirects) return {
+			kind: "error",
+			reason: error instanceof BlockedError ? error.message : `redirect loop: ${error.message}`
+		};
+		reason = errorMessage(error);
+	}
+	return {
+		kind: "error",
+		reason
+	};
+}
+// src/research/profile/parking.ts
+const PARKING_NS_SUFFIXES = [
+	"sedoparking.com",
+	"bodis.com",
+	"parkingcrew.net",
+	"above.com",
+	"afternic.com",
+	"dan.com",
+	"undeveloped.com",
+	"parklogic.com",
+	"hugedomains.com",
+	"uniregistrymarket.link",
+	"namebrightdns.com",
+	"fabulous.com",
+	"voodoo.com",
+	"cashparking.com",
+	"parked.com",
+	"smartname.com",
+	"dsredirection.com",
+	"ztomy.com"
+];
+function cleanHost(host) {
+	return host.trim().toLowerCase().replace(/\.$/, "");
+}
+/** Returns the matched parking service domain, or undefined when no nameserver matches. */
+function parkingProvider(nameservers) {
+	for (const ns of nameservers) {
+		const host = cleanHost(ns);
+		const match = PARKING_NS_SUFFIXES.find((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+		if (match) return match;
+	}
+}
+// src/research/profile/registration.ts
+function isRecord$1(value) {
+	return typeof value === "object" && value !== null;
+}
+function normalizeNs(host) {
+	return host.trim().toLowerCase().replace(/\.$/, "");
+}
+function rdapRegistrar(entities) {
+	for (const entity of entities ?? []) {
+		if (!isRecord$1(entity)) continue;
+		const roles = entity.roles;
+		if (!Array.isArray(roles) || !roles.includes("registrar")) continue;
+		const vcard = entity.vcardArray;
+		if (Array.isArray(vcard) && Array.isArray(vcard[1])) {
+			for (const prop of vcard[1]) if (Array.isArray(prop) && prop[0] === "fn" && typeof prop[3] === "string" && prop[3]) return prop[3];
+		}
+		if (typeof entity.handle === "string") return entity.handle;
+	}
+}
+function fromRdap(record) {
+	const event = (action) => record.events?.find((e) => e.eventAction === action)?.eventDate;
+	return {
+		createdAt: event("registration"),
+		expiresAt: event("expiration"),
+		registrar: rdapRegistrar(record.entities),
+		nameservers: (record.nameservers ?? []).flatMap((ns) => ns.ldhName ? [normalizeNs(ns.ldhName)] : [])
+	};
+}
+const CREATED = [
+	/^[ \t]*creation date:[ \t]*(\S.*)$/im,
+	/^[ \t]*created(?: on)?:[ \t]*(\S.*)$/im,
+	/^[ \t]*registered(?: on)?:[ \t]*(\S.*)$/im,
+	/^[ \t]*registration time:[ \t]*(\S.*)$/im
+];
+const EXPIRES = [
+	/^[ \t]*registry expiry date:[ \t]*(\S.*)$/im,
+	/^[ \t]*registrar registration expiration date:[ \t]*(\S.*)$/im,
+	/^[ \t]*expir(?:y|ation) date:[ \t]*(\S.*)$/im,
+	/^[ \t]*expires(?: on)?:[ \t]*(\S.*)$/im,
+	/^[ \t]*paid-till:[ \t]*(\S.*)$/im
+];
+const REGISTRAR = [/^[ \t]*registrar:[ \t]*(\S.*)$/im, /^[ \t]*registrar name:[ \t]*(\S.*)$/im];
+const NAMESERVER = /^[ \t]*(?:name server|nserver):[ \t]*(\S+)/gim;
+function firstMatch(raw, patterns) {
+	for (const pattern of patterns) {
+		const value = raw.match(pattern)?.[1]?.trim();
+		if (value) return value;
+	}
+}
+function fromWhois(raw) {
+	const nameservers = [...raw.matchAll(NAMESERVER)].map((m) => normalizeNs(m[1] ?? ""));
+	return {
+		createdAt: firstMatch(raw, CREATED),
+		expiresAt: firstMatch(raw, EXPIRES),
+		registrar: firstMatch(raw, REGISTRAR),
+		nameservers: [...new Set(nameservers.filter(Boolean))]
+	};
+}
+// src/research/profile/profile.ts
+const PROFILE_TTL_MS = 864e5;
+function failReason(prefix, result) {
+	if (result.kind === "no_server") return `${prefix}: no server for this TLD`;
+	if (result.kind === "error") return `${prefix}: ${result.reason}`;
+	return `${prefix}: response not understood`;
+}
+async function lookupRegistration(domain, tld, deps) {
+	const rdap = await deps.rdap(domain, tld);
+	if (rdap.kind === "registered") return {
+		status: "registered",
+		source: "rdap",
+		nameserverSource: "rdap",
+		...fromRdap(rdap.record)
+	};
+	if (rdap.kind === "not_found") return {
+		status: "not_found",
+		source: "rdap",
+		nameserverSource: "none",
+		nameservers: []
+	};
+	const whois = await deps.whois(domain, tld);
+	if (whois.kind === "registered") return {
+		status: "registered",
+		source: "whois",
+		nameserverSource: "whois",
+		...fromWhois(whois.raw)
+	};
+	if (whois.kind === "not_found") return {
+		status: "not_found",
+		source: "whois",
+		nameserverSource: "none",
+		nameservers: []
+	};
+	return {
+		status: "unknown",
+		source: "none",
+		nameserverSource: "none",
+		nameservers: [],
+		reason: `${failReason("RDAP", rdap)}; ${failReason("WHOIS", whois)}`
+	};
+}
+function classify(registration, provider, homepage) {
+	if (homepage.kind === "ok" && homepage.forSale) return {
+		status: "for_sale",
+		confidence: "medium",
+		reason: "The homepage has for-sale wording or redirects to a domain marketplace."
+	};
+	if (provider) return {
+		status: "parked",
+		confidence: "high",
+		reason: `Nameservers belong to ${provider}.`
+	};
+	if (homepage.kind === "ok" && homepage.parkedPage) return {
+		status: "parked",
+		confidence: "medium",
+		reason: "The homepage looks like a parking page."
+	};
+	if (homepage.kind === "ok") {
+		if (homepage.httpStatus < 400) return {
+			status: "live_site",
+			confidence: "medium",
+			reason: `Homepage answered HTTP ${homepage.httpStatus}.`
+		};
+		if ([
+			401,
+			403,
+			429
+		].includes(homepage.httpStatus)) return {
+			status: "live_site",
+			confidence: "low",
+			reason: `A web server answered but refused automated access (HTTP ${homepage.httpStatus}); not retried or bypassed.`
+		};
+		return {
+			status: "no_site",
+			confidence: "low",
+			reason: `Homepage returned HTTP ${homepage.httpStatus}.`
+		};
+	}
+	const unreachable = `Homepage unreachable: ${homepage.reason}`;
+	return {
+		status: "unknown",
+		confidence: "low",
+		reason: registration.status === "unknown" ? `${registration.reason ?? "Registration lookup failed"}; homepage: ${homepage.reason}` : unreachable
+	};
+}
+function ttlFor(profile) {
+	if (profile.status === "unknown") return 0;
+	if (profile.status === "not_registered") return TTL.likelyAvailable;
+	return PROFILE_TTL_MS;
+}
+async function buildProfile(domain, tld, deps) {
+	const checkedAt = (deps.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
+	const registration = await lookupRegistration(domain, tld, deps);
+	if (registration.status === "not_found") return {
+		domain,
+		status: "not_registered",
+		confidence: registration.source === "rdap" ? "high" : "medium",
+		source: registration.source,
+		checkedAt,
+		reason: "No registration found. Use check_domains for availability.",
+		registration
+	};
+	if (registration.nameservers.length === 0) {
+		const ns = await deps.nameservers(domain);
+		if (ns && ns.length > 0) {
+			registration.nameservers = ns;
+			registration.nameserverSource = "dns";
+		}
+	}
+	const provider = parkingProvider(registration.nameservers);
+	const homepage = await deps.homepage(domain);
+	const sources = [
+		registration.source,
+		registration.nameserverSource,
+		"http"
+	].filter((s, i, all) => s !== "none" && all.indexOf(s) === i);
+	return {
+		domain,
+		...classify(registration, provider, homepage),
+		source: sources.join("+"),
+		checkedAt,
+		registration,
+		parkingProvider: provider,
+		homepage
+	};
+}
+/** Profiles one domain. Throws ValidationError for malformed input. */
+async function profileDomain(input, deps) {
+	const { label, tld } = splitDomain(input);
+	const domain = `${label}.${tld}`;
+	const key = `profile:${domain}`;
+	const cached = await deps.cache.get(key);
+	if (cached) return cached;
+	const profile = await buildProfile(domain, tld, deps);
+	try {
+		await deps.cache.set(key, profile, ttlFor(profile));
+	} catch {}
+	return profile;
+}
+// src/research/trademarks/euipo.ts
+const EUIPO_ENDPOINTS = {
+	production: {
+		token: "https://euipo.europa.eu/cas-server-webapp/oidc/accessToken",
+		api: "https://api.euipo.europa.eu/trademark-search"
+	},
+	sandbox: {
+		token: "https://auth-sandbox.euipo.europa.eu/oidc/accessToken",
+		api: "https://api-sandbox.euipo.europa.eu/trademark-search"
+	}
+};
+function isRecord(value) {
+	return typeof value === "object" && value !== null;
+}
+/** RSQL "contains" query on the word element, optionally limited to Nice classes. */
+function buildEuipoQuery(mark, niceClasses) {
+	const term = mark.trim().replace(/["\\]/g, "");
+	const parts = [`wordMarkSpecification.verbalElement==${/[\s'();,=!~<>]/.test(term) ? `"*${term}*"` : `*${term}*`}`];
+	if (niceClasses.length > 0) parts.push(`niceClasses=in=(${niceClasses.join(",")})`);
+	return parts.join(" and ");
+}
+function parseMatch(item) {
+	if (!isRecord(item) || typeof item.applicationNumber !== "string") return void 0;
+	const spec = isRecord(item.wordMarkSpecification) ? item.wordMarkSpecification : {};
+	const classes = Array.isArray(item.niceClasses) ? item.niceClasses : [];
+	const applicants = Array.isArray(item.applicants) ? item.applicants : [];
+	return {
+		office: "euipo",
+		mark: typeof spec.verbalElement === "string" ? spec.verbalElement : "(no word element)",
+		applicationNumber: item.applicationNumber,
+		status: typeof item.status === "string" ? item.status : void 0,
+		niceClasses: classes.map(Number).filter((n) => Number.isInteger(n)),
+		applicationDate: typeof item.applicationDate === "string" ? item.applicationDate : void 0,
+		applicants: applicants.flatMap((a) => isRecord(a) && typeof a.name === "string" ? [a.name] : []),
+		url: `https://euipo.europa.eu/eSearch/#details/trademarks/${item.applicationNumber}`
+	};
+}
+/** Parses a search page. Any shape change yields an error, never a guess. */
+function parseEuipoSearch(body) {
+	if (!isRecord(body) || !Array.isArray(body.trademarks)) return {
+		kind: "error",
+		reason: "EUIPO response shape not recognized"
+	};
+	const matches = body.trademarks.flatMap((item) => parseMatch(item) ?? []);
+	if (typeof body.totalElements !== "number") return {
+		kind: "error",
+		reason: "EUIPO response had no numeric totalElements"
+	};
+	if (body.trademarks.length > 0 && matches.length === 0) return {
+		kind: "error",
+		reason: "EUIPO results could not be parsed"
+	};
+	return {
+		kind: "ok",
+		total: body.totalElements,
+		matches
+	};
+}
+function createEuipoClient(http, creds, now = Date.now) {
+	const endpoints = EUIPO_ENDPOINTS[creds.env];
+	let token;
+	const getToken = async (force) => {
+		if (!force && token && token.expiresAt > now()) return token.value;
+		const body = new URLSearchParams({
+			grant_type: "client_credentials",
+			client_id: creds.clientId,
+			client_secret: creds.clientSecret,
+			scope: "uid"
+		});
+		const res = await http(endpoints.token, {
+			method: "POST",
+			headers: {
+				"content-type": "application/x-www-form-urlencoded",
+				accept: "application/json"
+			},
+			body: body.toString()
+		});
+		if (!res.ok) throw new Error(`EUIPO token request returned HTTP ${res.status}`);
+		const payload = await res.json();
+		if (typeof payload.access_token !== "string") throw new Error("EUIPO token response had no access_token");
+		const lifetime = typeof payload.expires_in === "number" ? payload.expires_in : 600;
+		token = {
+			value: payload.access_token,
+			expiresAt: now() + Math.max(lifetime - 60, 0) * 1e3
+		};
+		return token.value;
+	};
+	const get = async (url, force) => http(url, { headers: {
+		authorization: `Bearer ${await getToken(force)}`,
+		"x-ibm-client-id": creds.clientId,
+		accept: "application/json"
+	} });
+	return {
+		env: creds.env,
+		async search(mark, niceClasses) {
+			const params = new URLSearchParams({
+				query: buildEuipoQuery(mark, niceClasses),
+				page: "0",
+				size: String(25)
+			});
+			const url = `${endpoints.api}/trademarks?${params.toString()}`;
+			try {
+				let res = await get(url, false);
+				if (res.status === 401) res = await get(url, true);
+				if (!res.ok) return {
+					kind: "error",
+					reason: `EUIPO search returned HTTP ${res.status}`
+				};
+				return parseEuipoSearch(await res.json());
+			} catch (error) {
+				return {
+					kind: "error",
+					reason: errorMessage(error)
+				};
+			}
+		}
+	};
+}
+// src/research/trademarks/links.ts
+/** Direct search links for a manual check. These are web pages for people, never fetched. */
+function trademarkSearchLinks(mark) {
+	const q = encodeURIComponent(mark.trim());
+	return [
+		{
+			office: "uspto",
+			url: `https://tmsearch.uspto.gov/search/search-results?query=${q}&section=default`,
+			note: "USPTO Trademark Search (United States)"
+		},
+		{
+			office: "euipo",
+			url: `https://euipo.europa.eu/eSearch/#basic/1+1+1+1/100+100+100+100/${q}`,
+			note: "EUIPO eSearch plus (EU trade marks)"
+		},
+		{
+			office: "tmview",
+			url: `https://www.tmdn.org/tmview/#/tmview/results?page=1&pageSize=30&criteria=C&basicSearch=${q}`,
+			note: "TMview (EU national offices and partner offices)"
+		},
+		{
+			office: "wipo",
+			url: "https://branddb.wipo.int/en/quicksearch",
+			note: `WIPO Global Brand Database: search the brand name "${mark.trim()}"`
+		}
+	];
+}
+// src/research/trademarks/search.ts
+const TRADEMARK_NOTE = "Automated search covers EUIPO word elements that contain the mark. no_matches is not a clearance: similar-sounding, translated, figurative, and unregistered marks are not covered. Use the links for a manual search and ask a trademark attorney before relying on a name.";
+const USPTO_REASON = "USPTO has no official keyless trademark search API (checked 2026-11-04). The tmsearch.uspto.gov backend is unofficial and bot-protected, so it is not queried. Use the USPTO link.";
+const WIPO_REASON = "The WIPO Global Brand Database has no public API (checked 2026-11-04). Use the WIPO link.";
+const EUIPO_NO_KEY_REASON = "EUIPO search needs free API credentials: set EUIPO_CLIENT_ID and EUIPO_CLIENT_SECRET (register at https://dev.euipo.europa.eu). Use the EUIPO or TMview link meanwhile.";
+const EUIPO_SANDBOX_REASON = "EUIPO_ENV=sandbox: results come from test data, not the live register.";
+async function searchEuipo(mark, classes, checkedAt, deps) {
+	const client = deps.euipo;
+	if (!client) return {
+		office: "euipo",
+		status: "unknown",
+		confidence: "low",
+		source: "none",
+		checkedAt,
+		matches: [],
+		reason: EUIPO_NO_KEY_REASON
+	};
+	const key = `trademark:euipo:${client.env}:${mark.toLowerCase()}:${classes.join(",")}`;
+	const cached = await deps.cache.get(key);
+	if (cached) return cached;
+	const found = await client.search(mark, classes);
+	if (found.kind === "error") return {
+		office: "euipo",
+		status: "unknown",
+		confidence: "low",
+		source: "euipo-api",
+		checkedAt,
+		matches: [],
+		reason: found.reason
+	};
+	const sandbox = client.env === "sandbox";
+	const result = {
+		office: "euipo",
+		status: found.total > 0 ? "matches_found" : "no_matches",
+		confidence: sandbox ? "low" : found.total > 0 ? "high" : "medium",
+		source: sandbox ? "euipo-api-sandbox" : "euipo-api",
+		checkedAt,
+		total: found.total,
+		matches: found.matches,
+		reason: sandbox ? EUIPO_SANDBOX_REASON : void 0
+	};
+	try {
+		await deps.cache.set(key, result, TTL.trademarks);
+	} catch {}
+	return result;
+}
+function linkOnly(office, reason, checkedAt) {
+	return {
+		office,
+		status: "unknown",
+		confidence: "low",
+		source: "none",
+		checkedAt,
+		matches: [],
+		reason
+	};
+}
+async function searchTrademarks(query, deps) {
+	const mark = query.mark.trim();
+	const classes = [...new Set(query.niceClasses ?? [])].sort((a, b) => a - b);
+	const checkedAt = (deps.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
+	return {
+		mark,
+		niceClasses: classes,
+		results: [
+			await searchEuipo(mark, classes, checkedAt, deps),
+			linkOnly("uspto", USPTO_REASON, checkedAt),
+			linkOnly("wipo", WIPO_REASON, checkedAt)
+		],
+		links: trademarkSearchLinks(mark),
+		note: TRADEMARK_NOTE
+	};
+}
+// src/research/runtime-part.ts
+function createResearchRuntime(deps) {
+	const { http, limiter, cache } = deps;
+	const keys = readResearchKeys(deps.env);
+	const resolveNs$1 = deps.resolveNs ?? resolveNs;
+	const homepageHttp = createGuardedHttp({
+		limiter,
+		...deps.homepage
+	});
+	const checkers = createCheckers(http, keys);
+	const euipo = keys.euipo ? createEuipoClient(http, keys.euipo) : void 0;
+	return {
+		profileDomain: (domain) => profileDomain(domain, {
+			cache,
+			rdap: (d, tld) => rdapLookup(d, tld, {
+				http,
+				servers: deps.rdapServers
+			}),
+			whois: (d, tld) => whoisLookup(d, tld, {
+				query: deps.whoisQuery,
+				limiter,
+				cache
+			}),
+			nameservers: async (d) => {
+				try {
+					return (await resolveNs$1(d)).map((ns) => ns.toLowerCase().replace(/\.$/, ""));
+				} catch {
+					return null;
+				}
+			},
+			homepage: (d) => fetchHomepage(d, homepageHttp)
+		}),
+		checkHandles: (handles, platforms) => checkHandles(handles, platforms, {
+			checkers,
+			cache
+		}),
+		searchTrademarks: (query) => searchTrademarks(query, {
+			euipo,
+			cache
+		})
+	};
+}
+// src/sources/dns.ts
+const NO_RECORD_CODES = /* @__PURE__ */ new Set([
+	"ENOTFOUND",
+	"ENODATA",
+	"NXDOMAIN"
+]);
+/** true: NS records exist; false: no NS records; null: the lookup failed. */
+async function hasNameservers(domain, resolve = resolveNs) {
+	try {
+		return (await resolve(domain)).length > 0;
+	} catch (error) {
+		const code = error.code;
+		return code !== void 0 && NO_RECORD_CODES.has(code) ? false : null;
+	}
+}
+// src/store/errors.ts
+/** An expected store failure whose message is safe to show the user. */
+var StoreError = class extends Error {
+	name = "StoreError";
+};
+/** A stored file was written by a newer engine; it must never be read from a backup or overwritten. */
+var NewerVersionError = class extends StoreError {
+	name = "NewerVersionError";
+};
+/** Formats zod issues as "path: message" pairs on one line. */
+function zodMessage(error) {
+	return error.issues.map((issue) => `${issue.path.length > 0 ? issue.path.join(".") : "(root)"}: ${issue.message}`).join("; ");
+}
+// src/store/fs-utils.ts
+function errorCode(error) {
+	return typeof error === "object" && error !== null && "code" in error ? error.code : void 0;
+}
+function isNotFound(error) {
+	return errorCode(error) === "ENOENT";
+}
+function isExists(error) {
+	return errorCode(error) === "EEXIST";
+}
+async function fileExists(path) {
+	try {
+		await access(path);
+		return true;
+	} catch (error) {
+		if (isNotFound(error)) return false;
+		throw error;
+	}
+}
+const RESERVED_DEVICE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+/** True for Windows reserved device names, which cannot be used as file or folder names there. */
+function isReservedDeviceName(name) {
+	return RESERVED_DEVICE.test(name);
+}
+// data/rulesets/budget.json
+var budget_default = {
+	id: "budget",
+	name: "Budget",
+	description: "Any style, 4-15 letters, on low-cost TLDs. Scores low renewal price strongly; check the renewal price and TLD reputation before buying.",
+	examples: [
+		"Snapfern",
+		"Bookly",
+		"Pixelnest",
+		"Tidy"
+	],
+	styles: [
+		{
+			"style": "descriptive",
+			"weight": .2
+		},
+		{
+			"style": "compound",
+			"weight": .2
+		},
+		{
+			"style": "invented",
+			"weight": .2
+		},
+		{
+			"style": "metaphor",
+			"weight": .2
+		},
+		{
+			"style": "affix",
+			"weight": .2
+		}
+	],
+	length: {
+		"min": 4,
+		"max": 15
+	},
+	filters: {
+		"hyphens": false,
+		"numbers": false,
+		"bannedPairs": [],
+		"bannedWords": []
+	},
+	tlds: {
+		"order": [
+			"sbs",
+			"site",
+			"online",
+			"store",
+			"space",
+			"lol",
+			"bond",
+			"xyz"
+		],
+		"countryFirst": false,
+		"com": "none",
+		"affixes": []
+	},
+	weights: {
+		"length": .5,
+		"say": .5,
+		"spell": .5,
+		"meaning": .5,
+		"uniqueness": .5,
+		"price": 1
+	}
+};
+// data/rulesets/coined.json
+var coined_default = {
+	id: "coined",
+	name: "Coined word",
+	description: "An invented word with no fixed meaning, 4-8 letters, easy to say and spell. Alternative TLDs are fine.",
+	examples: [
+		"Kodak",
+		"Zalando",
+		"Vimeo",
+		"Hulu"
+	],
+	styles: [{
+		"style": "invented",
+		"weight": .8
+	}, {
+		"style": "misspelling",
+		"weight": .2
+	}],
+	length: {
+		"min": 4,
+		"max": 8
+	},
+	filters: {
+		"hyphens": false,
+		"numbers": false,
+		"bannedPairs": [
+			"qx",
+			"xq",
+			"jq",
+			"qj",
+			"vq",
+			"wq",
+			"zx",
+			"xz"
+		],
+		"bannedWords": []
+	},
+	tlds: {
+		"order": [
+			"com",
+			"io",
+			"co",
+			"app",
+			"xyz"
+		],
+		"countryFirst": false,
+		"com": "nice",
+		"affixes": ["get-", "try-"]
+	},
+	weights: {
+		"length": .8,
+		"say": 1,
+		"spell": .8,
+		"meaning": .3,
+		"uniqueness": 1,
+		"price": .4
+	}
+};
+// data/rulesets/compound.json
+var compound_default = {
+	id: "compound",
+	name: "Compound",
+	description: "Two real words joined into one, 6-12 letters.",
+	examples: [
+		"Facebook",
+		"Snapchat",
+		"Dropbox",
+		"Mailchimp"
+	],
+	styles: [{
+		"style": "compound",
+		"weight": 1
+	}],
+	length: {
+		"min": 6,
+		"max": 12
+	},
+	filters: {
+		"hyphens": false,
+		"numbers": false,
+		"bannedPairs": [],
+		"bannedWords": []
+	},
+	tlds: {
+		"order": [
+			"com",
+			"io",
+			"co",
+			"app"
+		],
+		"countryFirst": false,
+		"com": "nice",
+		"affixes": ["get-", "-hq"]
+	},
+	weights: {
+		"length": .6,
+		"say": 1,
+		"spell": 1,
+		"meaning": .8,
+		"uniqueness": .7,
+		"price": .4
+	}
+};
+// data/rulesets/descriptive.json
+var descriptive_default = {
+	id: "descriptive",
+	name: "Descriptive",
+	description: "Says what the product does, 8-15 letters. Wants .com; falls back to an affix such as get- or -app when the exact .com is taken.",
+	examples: [
+		"Booking",
+		"Hotels",
+		"SiteBuilder",
+		"PhotoPrint"
+	],
+	styles: [
+		{
+			"style": "descriptive",
+			"weight": .7
+		},
+		{
+			"style": "compound",
+			"weight": .2
+		},
+		{
+			"style": "affix",
+			"weight": .1
+		}
+	],
+	length: {
+		"min": 8,
+		"max": 15
+	},
+	filters: {
+		"hyphens": false,
+		"numbers": false,
+		"bannedPairs": [],
+		"bannedWords": []
+	},
+	tlds: {
+		"order": [
+			"com",
+			"co",
+			"net"
+		],
+		"countryFirst": false,
+		"com": "must",
+		"affixes": [
+			"get-",
+			"try-",
+			"use-",
+			"-app",
+			"-hq"
+		]
+	},
+	weights: {
+		"length": .4,
+		"say": .8,
+		"spell": 1,
+		"meaning": 1,
+		"uniqueness": .5,
+		"price": .4
+	}
+};
+// data/rulesets/dev-tool.json
+var dev_tool_default = {
+	id: "dev-tool",
+	name: "Developer tool",
+	description: "Lowercase, short, and easy to type in a terminal. Developer TLDs first: .dev, .sh, .io.",
+	examples: [
+		"vite",
+		"deno",
+		"bun",
+		"turso"
+	],
+	styles: [
+		{
+			"style": "compound",
+			"weight": .4
+		},
+		{
+			"style": "invented",
+			"weight": .3
+		},
+		{
+			"style": "descriptive",
+			"weight": .3
+		}
+	],
+	length: {
+		"min": 3,
+		"max": 10
+	},
+	filters: {
+		"hyphens": false,
+		"numbers": false,
+		"bannedPairs": [],
+		"bannedWords": []
+	},
+	tlds: {
+		"order": [
+			"dev",
+			"sh",
+			"io",
+			"com"
+		],
+		"countryFirst": false,
+		"com": "nice",
+		"affixes": [
+			"get-",
+			"use-",
+			"-hq"
+		]
+	},
+	weights: {
+		"length": 1,
+		"say": .7,
+		"spell": 1,
+		"meaning": .5,
+		"uniqueness": .8,
+		"price": .3
+	}
+};
+// data/rulesets/evocative.json
+var evocative_default = {
+	id: "evocative",
+	name: "Evocative",
+	description: "One real word that carries meaning by association, not description. .com is nice to have.",
+	examples: [
+		"Amazon",
+		"Apple",
+		"Oracle",
+		"Slack"
+	],
+	styles: [{
+		"style": "metaphor",
+		"weight": .9
+	}, {
+		"style": "misspelling",
+		"weight": .1
+	}],
+	length: {
+		"min": 4,
+		"max": 10
+	},
+	filters: {
+		"hyphens": false,
+		"numbers": false,
+		"bannedPairs": [],
+		"bannedWords": []
+	},
+	tlds: {
+		"order": [
+			"com",
+			"co",
+			"io",
+			"ai"
+		],
+		"countryFirst": false,
+		"com": "nice",
+		"affixes": [
+			"get-",
+			"try-",
+			"-hq",
+			"-app"
+		]
+	},
+	weights: {
+		"length": .6,
+		"say": .9,
+		"spell": .8,
+		"meaning": 1,
+		"uniqueness": .8,
+		"price": .3
+	}
+};
+// data/rulesets/local-business.json
+var local_business_default = {
+	id: "local-business",
+	name: "Local business",
+	description: "Place plus service, so local customers know what and where. The target country's TLD comes first.",
+	examples: [
+		"BerlinPlumbing",
+		"LondonDental",
+		"AustinMovers"
+	],
+	styles: [{
+		"style": "place-service",
+		"weight": .8
+	}, {
+		"style": "descriptive",
+		"weight": .2
+	}],
+	length: {
+		"min": 6,
+		"max": 20
+	},
+	filters: {
+		"hyphens": true,
+		"numbers": false,
+		"bannedPairs": [],
+		"bannedWords": []
+	},
+	tlds: {
+		"order": ["com", "net"],
+		"countryFirst": true,
+		"com": "nice",
+		"affixes": ["-pro", "-co"]
+	},
+	weights: {
+		"length": .5,
+		"say": .8,
+		"spell": 1,
+		"meaning": 1,
+		"uniqueness": .4,
+		"price": .5
+	}
+};
+// data/rulesets/personal.json
+var personal_default = {
+	id: "personal",
+	name: "Personal brand",
+	description: "Forms of the person's name: first name, first plus last, or initials plus role.",
+	examples: [
+		"JaneDoe",
+		"JDoe",
+		"JaneDoeDesign",
+		"JDStudio"
+	],
+	styles: [{
+		"style": "person-name",
+		"weight": 1
+	}],
+	length: {
+		"min": 4,
+		"max": 20
+	},
+	filters: {
+		"hyphens": true,
+		"numbers": false,
+		"bannedPairs": [],
+		"bannedWords": []
+	},
+	tlds: {
+		"order": [
+			"com",
+			"me",
+			"io",
+			"name"
+		],
+		"countryFirst": false,
+		"com": "nice",
+		"affixes": [
+			"by-",
+			"-studio",
+			"-design",
+			"-dev"
+		]
+	},
+	weights: {
+		"length": .6,
+		"say": .8,
+		"spell": 1,
+		"meaning": 1,
+		"uniqueness": .3,
+		"price": .4
+	}
+};
+// data/rulesets/premium.json
+var premium_default = {
+	id: "premium",
+	name: "Premium",
+	description: "Short and easy to say, built on Latin or Greek roots. Requires the exact .com.",
+	examples: [
+		"Nova",
+		"Aeris",
+		"Lumen",
+		"Veritas"
+	],
+	styles: [{
+		"style": "invented",
+		"weight": .6
+	}, {
+		"style": "metaphor",
+		"weight": .4
+	}],
+	length: {
+		"min": 4,
+		"max": 8
+	},
+	filters: {
+		"hyphens": false,
+		"numbers": false,
+		"bannedPairs": [
+			"qx",
+			"xq",
+			"jq",
+			"qj",
+			"vq",
+			"wq",
+			"zx",
+			"xz"
+		],
+		"bannedWords": []
+	},
+	tlds: {
+		"order": ["com"],
+		"countryFirst": false,
+		"com": "must",
+		"affixes": []
+	},
+	weights: {
+		"length": 1,
+		"say": 1,
+		"spell": 1,
+		"meaning": .6,
+		"uniqueness": .7,
+		"price": .2
+	}
+};
+// src/rulesets/schema.ts
+const RULESET_ID = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+const NAME_STYLES = [
+	"descriptive",
+	"compound",
+	"invented",
+	"metaphor",
+	"misspelling",
+	"affix",
+	"person-name",
+	"place-service"
+];
+const WEIGHT_KEYS = [
+	"length",
+	"say",
+	"spell",
+	"meaning",
+	"uniqueness",
+	"price"
+];
+/** A string with at least one non-space character and a length cap. */
+function nonBlank(max) {
+	return string().regex(/\S/, "Must not be blank.").max(max);
+}
+const RulesetIdSchema = string().regex(RULESET_ID, "Ruleset ids use 1-40 lowercase letters, digits, or inner hyphens.");
+/** Id of a ruleset that exists as a file or in the bundle; "user" only marks user-supplied names. */
+const SelectableRulesetIdSchema = RulesetIdSchema.refine((id) => id !== "user", "\"user\" is reserved for names the user supplied; choose another ruleset id.").refine((id) => !isReservedDeviceName(id), "This id is a reserved device name on Windows; choose another ruleset id.");
+function isCanonicalTld(value) {
+	try {
+		return normalizeTld(value) === value;
+	} catch (error) {
+		if (error instanceof ValidationError) return false;
+		throw error;
+	}
+}
+const TldSchema = string().refine(isCanonicalTld, "Use a lowercase TLD without a leading dot, e.g. \"com\" or \"co.uk\".");
+const weight = number().min(0).max(1);
+const RulesetSchema = object$1({
+	id: SelectableRulesetIdSchema,
+	name: nonBlank(60),
+	description: nonBlank(400),
+	examples: array(nonBlank(40)).min(3).max(5),
+	styles: array(object$1({
+		style: _enum(NAME_STYLES),
+		weight
+	})).min(1).max(NAME_STYLES.length).describe("Name styles and their share of generated names (0-1 each)"),
+	length: object$1({
+		min: number().int().min(1).max(63),
+		max: number().int().min(1).max(63)
+	}),
+	filters: object$1({
+		hyphens: boolean(),
+		numbers: boolean(),
+		bannedPairs: array(string().regex(/^[a-z]{2}$/, "Banned pairs are two lowercase letters.")).max(50),
+		bannedWords: array(nonBlank(40)).max(100)
+	}),
+	tlds: object$1({
+		order: array(TldSchema).min(1).max(20).describe("TLDs in priority order"),
+		countryFirst: boolean().default(false).describe("Put the ccTLD of the brief's first target country before the order"),
+		com: _enum([
+			"must",
+			"nice",
+			"none"
+		]).describe(".com policy"),
+		affixes: array(string().regex(/^(?:[a-z0-9]{1,10}-|-[a-z0-9]{1,10})$/, "Affixes look like \"get-\" (prefix) or \"-hq\" (suffix).")).max(20).describe(".com fallback affixes; the hyphen marks the position and is not part of the domain (\"get-\" + acme = getacme.com)")
+	}),
+	weights: object$1({
+		length: weight,
+		say: weight,
+		spell: weight,
+		meaning: weight,
+		uniqueness: weight,
+		price: weight
+	}).describe("Score weights (0-1): length, ease of saying, ease of spelling, meaning fit, uniqueness, renewal price")
+}).superRefine((r, ctx) => {
+	if (r.length.min > r.length.max) ctx.addIssue({
+		code: "custom",
+		path: ["length"],
+		message: "length.min must not exceed length.max."
+	});
+	const styles = r.styles.map((s) => s.style);
+	if (new Set(styles).size !== styles.length) ctx.addIssue({
+		code: "custom",
+		path: ["styles"],
+		message: "Each style may appear once."
+	});
+	if (!r.styles.some((s) => s.weight > 0)) ctx.addIssue({
+		code: "custom",
+		path: ["styles"],
+		message: "At least one style needs a weight above 0."
+	});
+	if (new Set(r.tlds.order).size !== r.tlds.order.length) ctx.addIssue({
+		code: "custom",
+		path: ["tlds", "order"],
+		message: "TLDs in tlds.order must be unique."
+	});
+	const hasCom = r.tlds.order.includes("com");
+	if (r.tlds.com === "must" && !hasCom) ctx.addIssue({
+		code: "custom",
+		path: ["tlds", "order"],
+		message: "A ruleset with com \"must\" lists \"com\" in tlds.order."
+	});
+	if (r.tlds.com === "none" && hasCom) ctx.addIssue({
+		code: "custom",
+		path: ["tlds", "order"],
+		message: "A ruleset with com \"none\" does not list \"com\" in tlds.order."
+	});
+	if (!Object.values(r.weights).some((w) => w > 0)) ctx.addIssue({
+		code: "custom",
+		path: ["weights"],
+		message: "At least one score weight must be above 0."
+	});
+});
+/** Read-only built-in rulesets, validated once at load. */
+const BUILTIN_RULESETS = [
+	coined_default,
+	descriptive_default,
+	compound_default,
+	evocative_default,
+	premium_default,
+	dev_tool_default,
+	personal_default,
+	local_business_default,
+	budget_default
+].map((raw) => RulesetSchema.parse(raw));
+const BUILTIN_IDS = new Set(BUILTIN_RULESETS.map((r) => r.id));
+// src/rulesets/store.ts
+function summarize$1(ruleset, builtin) {
+	const { id, name, description, examples } = ruleset;
+	return {
+		id,
+		name,
+		description,
+		examples,
+		builtin
+	};
+}
+/** Built-in rulesets from the bundle plus custom rulesets stored as <dir>/<id>.json. */
+var RulesetStore = class {
+	dir;
+	constructor(dir) {
+		this.dir = dir;
+	}
+	async list() {
+		const rulesets = BUILTIN_RULESETS.map((r) => summarize$1(r, true));
+		const invalid = [];
+		for (const file of await this.customFiles()) try {
+			rulesets.push(summarize$1(await this.readCustom(file), false));
+		} catch (error) {
+			if (!(error instanceof StoreError)) throw error;
+			invalid.push({
+				file,
+				error: error.message
+			});
+		}
+		return {
+			rulesets,
+			invalid
+		};
+	}
+	async get(id) {
+		const builtin = BUILTIN_RULESETS.find((r) => r.id === id);
+		if (builtin) return {
+			ruleset: builtin,
+			builtin: true
+		};
+		this.checkId(id);
+		try {
+			return {
+				ruleset: await this.readCustom(`${id}.json`),
+				builtin: false
+			};
+		} catch (error) {
+			if (isNotFound(error)) throw new StoreError(`Ruleset "${id}" not found. Call ruleset_list to see the available ids.`);
+			throw error;
+		}
+	}
+	async save(input) {
+		const parsed = RulesetSchema.safeParse(input);
+		if (!parsed.success) throw new StoreError(`Invalid ruleset: ${zodMessage(parsed.error)}`);
+		const ruleset = parsed.data;
+		if (BUILTIN_IDS.has(ruleset.id)) throw new StoreError(`"${ruleset.id}" is a built-in ruleset id; choose a different id for a custom ruleset.`);
+		const path = this.path(ruleset.id);
+		const created = !await fileExists(path);
+		const file = {
+			schemaVersion: 1,
+			...ruleset
+		};
+		await writeFileAtomic(path, `${JSON.stringify(file, null, 2)}\n`);
+		return {
+			ruleset,
+			created
+		};
+	}
+	async delete(id) {
+		if (BUILTIN_IDS.has(id)) throw new StoreError(`"${id}" is a built-in ruleset and cannot be deleted.`);
+		this.checkId(id);
+		try {
+			await rm(this.path(id));
+		} catch (error) {
+			if (isNotFound(error)) throw new StoreError(`Custom ruleset "${id}" not found.`);
+			throw error;
+		}
+	}
+	checkId(id) {
+		if (!RULESET_ID.test(id)) throw new StoreError(`"${id}" is not a valid ruleset id: use 1-40 lowercase letters, digits, or inner hyphens.`);
+	}
+	path(id) {
+		return join(this.dir, `${id}.json`);
+	}
+	async customFiles() {
+		try {
+			return (await readdir(this.dir)).filter((file) => file.endsWith(".json")).sort();
+		} catch (error) {
+			if (isNotFound(error)) return [];
+			throw error;
+		}
+	}
+	/** Reads one custom file; a missing file throws the raw ENOENT error, anything else StoreError. */
+	async readCustom(file) {
+		const text = await readFile(join(this.dir, file), "utf8");
+		let raw;
+		try {
+			raw = JSON.parse(text);
+		} catch {
+			throw new StoreError(`${file} is not valid JSON.`);
+		}
+		const { schemaVersion, ...rest } = typeof raw === "object" && raw !== null ? raw : {};
+		if (schemaVersion !== 1) throw new StoreError(`${file} has schemaVersion ${String(schemaVersion)}; this engine reads schemaVersion 1.`);
+		const parsed = RulesetSchema.safeParse(rest);
+		if (!parsed.success) throw new StoreError(`${file} is not a valid ruleset: ${zodMessage(parsed.error)}`);
+		if (`${parsed.data.id}.json` !== file) throw new StoreError(`${file} declares id "${parsed.data.id}"; the file name must match the id.`);
+		if (BUILTIN_IDS.has(parsed.data.id)) throw new StoreError(`${file} uses the built-in id "${parsed.data.id}" and is ignored.`);
+		return parsed.data;
+	}
+};
+// src/rulesets/score.ts
+const EQUAL_WEIGHTS = {
+	length: 1,
+	say: 1,
+	spell: 1,
+	meaning: 1,
+	uniqueness: 1,
+	price: 1
+};
+/**
+* Weighted mean of the rated parts, scaled to 0-100 with one decimal.
+* Parts that are missing or carry weight 0 are left out of the mean.
+*/
+function computeScore(parts, weights) {
+	let sum = 0;
+	let total = 0;
+	for (const key of WEIGHT_KEYS) {
+		const part = parts[key];
+		const weight = weights[key];
+		if (part === void 0 || weight === 0) continue;
+		sum += part * weight;
+		total += weight;
+	}
+	if (total === 0) return null;
+	return Math.round(sum / total * 100) / 10;
+}
+// src/store/brief.ts
+const ARCHETYPES = [
+	"sage",
+	"hero",
+	"creator",
+	"explorer",
+	"outlaw",
+	"magician",
+	"lover",
+	"jester",
+	"everyman",
+	"caregiver",
+	"ruler",
+	"innocent"
+];
+const COUNTRY_CODE = /^[A-Z]{2}$/;
+const LANGUAGE_CODE = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
+const country = string().regex(COUNTRY_CODE, "Use an ISO 3166-1 alpha-2 country code such as \"DE\" or \"US\".");
+const language = string().regex(LANGUAGE_CODE, "Use a BCP 47 language code such as \"en\", \"de\", or \"pt-BR\".");
+const nameLength = number().int().min(1).max(63);
+/** The brand brief: the spec's 7-section questionnaire. R fields are required, O fields optional. */
+const BriefSchema = object$1({
+	subject: object$1({
+		what: nonBlank(300).describe("R: What it is, in one sentence"),
+		category: nonBlank(120).describe("R: Category or industry"),
+		problem: nonBlank(500).describe("R: Problem it solves, and for whom"),
+		features: array(nonBlank(120)).max(20).optional().describe("O: Key features or offer"),
+		keywords: array(nonBlank(60)).max(30).optional().describe("O: Descriptive keywords")
+	}),
+	audience: object$1({
+		who: nonBlank(300).describe("R: Who buys or uses it"),
+		segment: _enum([
+			"b2b",
+			"b2c",
+			"both"
+		]).describe("R: B2B, B2C, or both"),
+		countries: array(country).min(1).max(30).describe("R: Target countries, ISO 3166-1 alpha-2"),
+		languages: array(language).min(1).max(20).describe("R: Target languages, BCP 47")
+	}),
+	positioning: object$1({
+		competitors: array(nonBlank(200)).min(1).max(5).optional().describe("O: 3-5 competitors, name or URL"),
+		difference: nonBlank(500).optional().describe("O: What makes it different"),
+		priceTier: _enum([
+			"budget",
+			"mid",
+			"premium"
+		]).describe("R: Price tier")
+	}),
+	personality: object$1({
+		tone: array(nonBlank(30)).length(3).describe("R: Exactly three words for the tone"),
+		archetype: _enum(ARCHETYPES).optional().describe("O: Brand archetype"),
+		avoid: array(nonBlank(60)).max(20).optional().describe("O: Words or feelings to avoid")
+	}),
+	nameRules: object$1({
+		rulesets: array(SelectableRulesetIdSchema).min(1).max(3).refine((ids) => new Set(ids).size === ids.length, "Pick each ruleset once.").describe("R: 1-3 ruleset ids from ruleset_list"),
+		overrides: object$1({
+			minLength: nameLength.optional(),
+			maxLength: nameLength.optional(),
+			include: array(nonBlank(40)).max(20).optional().describe("Words to include"),
+			ban: array(nonBlank(40)).max(50).optional().describe("Words to ban"),
+			extraTlds: array(TldSchema).max(10).optional().describe("Extra TLDs, e.g. \"app\"")
+		}).refine((o) => o.minLength === void 0 || o.maxLength === void 0 || o.minLength <= o.maxLength, "minLength must not exceed maxLength.").optional().describe("O: Per-project overrides on top of the rulesets"),
+		handles: array(nonBlank(30)).max(12).optional().describe("O: Social handles that matter, lowercase platform ids such as \"github\", \"x\", \"instagram\"")
+	}),
+	future: object$1({ scope: _enum(["broad", "narrow"]) }).optional().describe("O: broad if the brand will grow past this product, narrow if not"),
+	mode: discriminatedUnion("type", [
+		object$1({ type: literal("startup") }),
+		object$1({ type: literal("product") }),
+		object$1({
+			type: literal("personal"),
+			fullName: nonBlank(120),
+			profession: nonBlank(120),
+			nameForms: array(nonBlank(80)).min(1).max(10).describe("Accepted name forms")
+		})
+	]).describe("R: startup, personal brand, or product")
+});
+// src/store/json-file.ts
+function backupPath(path) {
+	return `${path}.bak`;
+}
+/** Reads and parses one file. A missing file throws the raw ENOENT error. */
+async function attempt(path, parse) {
+	const text = await readFile(path, "utf8");
+	try {
+		return {
+			ok: true,
+			value: parse(JSON.parse(text))
+		};
+	} catch (error) {
+		if (error instanceof NewerVersionError) throw error;
+		return {
+			ok: false,
+			problem: errorMessage(error)
+		};
+	}
+}
+/** Reads a JSON file; if it does not parse or validate, reads `<path>.bak` and says so. */
+async function readJsonWithBackup(path, parse) {
+	const main = await attempt(path, parse);
+	if (main.ok) return {
+		value: main.value,
+		recoveredFromBackup: false
+	};
+	let backup;
+	try {
+		backup = await attempt(backupPath(path), parse);
+	} catch (error) {
+		if (isNotFound(error)) throw new StoreError(`${path} is unreadable (${main.problem}) and has no backup.`);
+		throw error;
+	}
+	if (!backup.ok) throw new StoreError(`${path} is unreadable (${main.problem}) and its backup is unreadable too (${backup.problem}).`);
+	return {
+		value: backup.value,
+		recoveredFromBackup: true,
+		problem: main.problem
+	};
+}
+function accepts(text, parse) {
+	try {
+		parse(JSON.parse(text));
+		return true;
+	} catch (error) {
+		if (error instanceof NewerVersionError) throw error;
+		return false;
+	}
+}
+/**
+* Writes JSON atomically. The current file becomes `<path>.bak` first, but only when it is
+* still valid, so a corrupt file never replaces a good backup.
+*/
+async function writeJsonWithBackup(path, value, parse) {
+	let current;
+	try {
+		current = await readFile(path, "utf8");
+	} catch (error) {
+		if (!isNotFound(error)) throw error;
+	}
+	if (current !== void 0) {
+		if (accepts(current, parse)) await writeFileAtomic(backupPath(path), current);
+		else {
+			const stamp = (/* @__PURE__ */ new Date()).toISOString().replaceAll(":", "-");
+			await rename(path, `${path}.corrupt-${stamp}`);
+		}
+	}
+	await writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+// src/store/names.ts
+const SLUG_MAX = 40;
+function stripMarks(text) {
+	return text.normalize("NFKD").replace(/\p{M}+/gu, "");
+}
+/** Folder-safe slug from a title: ASCII, lowercase, hyphens, cut at a word boundary. */
+function slugify(title) {
+	let slug = stripMarks(title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+	if (slug.length > SLUG_MAX) {
+		const cut = slug.slice(0, 41).lastIndexOf("-");
+		slug = slug.slice(0, cut > 0 ? cut : SLUG_MAX).replace(/-+$/, "");
+	}
+	if (!slug) return "project";
+	return isReservedDeviceName(slug) ? `${slug}-project` : slug;
+}
+/** Domain label for a display name: "Blue Fern" -> "bluefern". Throws ValidationError. */
+function nameLabel(name) {
+	return normalizeLabel(stripMarks(name).replace(/[\s_'’]+/g, ""));
+}
+const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
+/** Ruleset id recorded for names the user supplied instead of generated ones. */
+const USER_RULESET = "user";
+const CHECK_KINDS = [
+	"domain",
+	"profile",
+	"handle",
+	"trademark",
+	"competitor"
+];
+const NOTE_SEVERITIES = [
+	"low",
+	"medium",
+	"high"
+];
+const iso = datetime({ offset: true });
+const confidence = _enum([
+	"high",
+	"medium",
+	"low"
+]);
+const part = number().min(0).max(10);
+const DomainCheckSchema = object$1({
+	domain: string().min(1).max(253),
+	status: _enum([
+		"registered",
+		"likely_available",
+		"unknown"
+	]),
+	source: _enum([
+		"rdap",
+		"whois",
+		"dns",
+		"none"
+	]),
+	confidence,
+	checkedAt: iso,
+	reason: string().max(500).optional()
+});
+/**
+* Open payload for profile_domain, check_handles, search_trademarks, and competitor findings.
+* Any object is accepted and kept as is; the common fields are validated only when present.
+*/
+const ResearchResultSchema = looseObject({
+	source: string().min(1).max(60).optional(),
+	checkedAt: iso.optional(),
+	confidence: confidence.optional()
+});
+const ScorePartsSchema = object$1({
+	length: part.optional(),
+	say: part.optional(),
+	spell: part.optional(),
+	meaning: part.optional(),
+	uniqueness: part.optional(),
+	price: part.optional()
+});
+const NoteSchema = object$1({
+	kind: nonBlank(40),
+	text: nonBlank(2e3),
+	language: string().regex(LANGUAGE_CODE).optional(),
+	severity: _enum(NOTE_SEVERITIES),
+	createdAt: iso
+});
+const NameEntrySchema = object$1({
+	name: nonBlank(63),
+	label: string().min(1).max(63),
+	rulesetId: RulesetIdSchema,
+	briefVersion: number().int().min(1),
+	strategy: _enum(NAME_STYLES).optional(),
+	rationale: nonBlank(500).optional(),
+	scoreParts: ScorePartsSchema,
+	score: number().min(0).max(100).nullable(),
+	notes: array(NoteSchema),
+	addedAt: iso
+});
+const NameChecksSchema = object$1({
+	domains: array(DomainCheckSchema),
+	profiles: array(ResearchResultSchema),
+	handles: array(ResearchResultSchema),
+	trademarks: array(ResearchResultSchema),
+	competitors: array(ResearchResultSchema)
+});
+const BriefRecordSchema = object$1({
+	version: number().int().min(1),
+	createdAt: iso,
+	data: BriefSchema
+});
+const ProjectSchema = object$1({
+	schemaVersion: literal(1),
+	slug: string().regex(SLUG),
+	title: nonBlank(80),
+	createdAt: iso,
+	updatedAt: iso,
+	brief: BriefRecordSchema,
+	briefHistory: array(BriefRecordSchema),
+	names: array(NameEntrySchema),
+	checks: record(string(), NameChecksSchema),
+	shortlist: array(string())
+});
+/** Validates a parsed project.json, checking schemaVersion first for a clear upgrade message. */
+function parseProject(raw) {
+	const version = typeof raw === "object" && raw !== null ? raw.schemaVersion : void 0;
+	if (typeof version === "number" && version > 1) throw new NewerVersionError(`${typeof raw.slug === "string" ? `Project "${raw.slug}"` : "This project"} was written by a newer engine (schemaVersion ${version}); upgrade the plugin.`);
+	if (version !== 1) throw new StoreError(`schemaVersion is ${String(version)}; this engine reads schemaVersion 1.`);
+	const parsed = ProjectSchema.safeParse(raw);
+	if (!parsed.success) throw new StoreError(`not a valid project: ${zodMessage(parsed.error)}`);
+	return parsed.data;
+}
+// src/store/project-store.ts
+const PROJECT_FILE = "project.json";
+const REPORT_FILE = "report.md";
+const TITLE_MAX = 80;
+const MAX_RESULT_BYTES = 32768;
+const RESEARCH_BUCKET = {
+	profile: "profiles",
+	handle: "handles",
+	trademark: "trademarks",
+	competitor: "competitors"
+};
+function parseOrThrow(schema, value, what) {
+	const parsed = schema.safeParse(value);
+	if (!parsed.success) throw new StoreError(`${what}: ${zodMessage(parsed.error)}`);
+	return parsed.data;
+}
+function summarize(project, recoveredFromBackup) {
+	return {
+		slug: project.slug,
+		title: project.title,
+		createdAt: project.createdAt,
+		updatedAt: project.updatedAt,
+		briefVersion: project.brief.version,
+		rulesets: project.brief.data.nameRules.rulesets,
+		names: project.names.length,
+		shortlist: project.shortlist.length,
+		recoveredFromBackup
+	};
+}
+function emptyChecks() {
+	return {
+		domains: [],
+		profiles: [],
+		handles: [],
+		trademarks: [],
+		competitors: []
+	};
+}
+/** Merges by key; an incoming item replaces an existing one in place. */
+function mergeBy(existing, incoming, key) {
+	const merged = new Map(existing.map((item) => [key(item), item]));
+	for (const item of incoming) merged.set(key(item), item);
+	return [...merged.values()];
+}
+function identity(result, field) {
+	const value = result[field];
+	return typeof value === "string" ? value : JSON.stringify(result);
+}
+function mergeResearch(kind, existing, incoming) {
+	if (kind === "trademark" || kind === "competitor") return incoming;
+	return mergeBy(existing, incoming, (r) => identity(r, kind === "handle" ? "platform" : "domain"));
+}
+function findName(project, name) {
+	let label;
+	try {
+		label = nameLabel(name);
+	} catch (error) {
+		if (!(error instanceof ValidationError)) throw error;
+	}
+	const entry = project.names.find((n) => n.name === name || n.label === name || n.label === label);
+	if (!entry) throw new StoreError(`"${name}" is not in project "${project.slug}"; add it with project_add_names first.`);
+	return entry;
+}
+/** JSON project store: <dir>/<slug>/project.json with a .bak of the previous write. */
+var ProjectStore = class {
+	dir;
+	now;
+	locks = /* @__PURE__ */ new Map();
+	constructor(dir, opts = {}) {
+		this.dir = dir;
+		this.now = opts.now ?? (() => /* @__PURE__ */ new Date());
+	}
+	paths(slug) {
+		const dir = join(this.dir, slug);
+		return {
+			dir,
+			projectFile: join(dir, PROJECT_FILE),
+			reportFile: join(dir, REPORT_FILE)
+		};
+	}
+	async create(brief, title) {
+		const data = parseOrThrow(BriefSchema, brief, "Invalid brief");
+		const finalTitle = (title?.trim() || data.subject.what.trim()).slice(0, TITLE_MAX).trim();
+		const at = this.now().toISOString();
+		await mkdir(this.dir, { recursive: true });
+		const slug = await this.claimSlug(slugify(finalTitle));
+		const project = {
+			schemaVersion: 1,
+			slug,
+			title: finalTitle,
+			createdAt: at,
+			updatedAt: at,
+			brief: {
+				version: 1,
+				createdAt: at,
+				data
+			},
+			briefHistory: [],
+			names: [],
+			checks: {},
+			shortlist: []
+		};
+		await this.write(project);
+		return {
+			project,
+			paths: this.paths(slug),
+			recoveredFromBackup: false
+		};
+	}
+	async get(slug) {
+		if (!SLUG.test(slug) || isReservedDeviceName(slug)) throw new StoreError(`"${slug}" is not a valid project slug.`);
+		const paths = this.paths(slug);
+		try {
+			const read = await readJsonWithBackup(paths.projectFile, parseProject);
+			return {
+				project: read.value,
+				paths,
+				recoveredFromBackup: read.recoveredFromBackup,
+				...read.problem === void 0 ? {} : { problem: read.problem }
+			};
+		} catch (error) {
+			if (isNotFound(error)) throw new StoreError(`Project "${slug}" not found. Call project_list to see existing projects.`);
+			throw error;
+		}
+	}
+	async list() {
+		let slugs;
+		try {
+			slugs = (await readdir(this.dir, { withFileTypes: true })).filter((e) => e.isDirectory() && SLUG.test(e.name)).map((e) => e.name);
+		} catch (error) {
+			if (isNotFound(error)) return {
+				projects: [],
+				invalid: []
+			};
+			throw error;
+		}
+		const projects = [];
+		const invalid = [];
+		for (const slug of slugs.sort()) try {
+			const loaded = await this.get(slug);
+			projects.push(summarize(loaded.project, loaded.recoveredFromBackup));
+		} catch (error) {
+			if (!(error instanceof StoreError)) throw error;
+			invalid.push({
+				slug,
+				error: error.message
+			});
+		}
+		projects.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.slug.localeCompare(b.slug));
+		return {
+			projects,
+			invalid
+		};
+	}
+	addNames(slug, names, weights) {
+		return this.update(slug, (project, at) => {
+			const allowed = [...project.brief.data.nameRules.rulesets, USER_RULESET];
+			const known = new Set(project.names.map((n) => n.label));
+			const result = {
+				added: [],
+				skipped: []
+			};
+			for (const item of names) {
+				let label;
+				try {
+					label = nameLabel(item.label ?? item.name);
+				} catch (error) {
+					if (!(error instanceof ValidationError)) throw error;
+					result.skipped.push({
+						name: item.name,
+						reason: error.message
+					});
+					continue;
+				}
+				if (!allowed.includes(item.rulesetId)) {
+					result.skipped.push({
+						name: item.name,
+						reason: `ruleset "${item.rulesetId}" is not one of this project's rulesets (${allowed.join(", ")}).`
+					});
+					continue;
+				}
+				if (known.has(label)) {
+					result.skipped.push({
+						name: item.name,
+						reason: `"${label}" is already in the project.`
+					});
+					continue;
+				}
+				const scoreParts = item.scoreParts ?? {};
+				const entry = {
+					name: item.name,
+					label,
+					rulesetId: item.rulesetId,
+					briefVersion: project.brief.version,
+					strategy: item.strategy,
+					rationale: item.rationale,
+					scoreParts,
+					score: computeScore(scoreParts, weights.get(item.rulesetId) ?? EQUAL_WEIGHTS),
+					notes: [],
+					addedAt: at
+				};
+				project.names.push(entry);
+				known.add(label);
+				result.added.push(entry);
+			}
+			return result;
+		});
+	}
+	addChecks(slug, batches) {
+		return this.update(slug, (project) => batches.map((batch) => {
+			const entry = findName(project, batch.name);
+			for (const result of batch.results) if (Buffer.byteLength(JSON.stringify(result), "utf8") > MAX_RESULT_BYTES) throw new StoreError(`A ${batch.kind} result for "${batch.name}" is larger than 32 KiB; store a trimmed result.`);
+			let checks = project.checks[entry.label];
+			if (!checks) {
+				checks = emptyChecks();
+				project.checks[entry.label] = checks;
+			}
+			if (batch.kind === "domain") {
+				const incoming = parseOrThrow(array(DomainCheckSchema), batch.results, `Invalid domain results for "${batch.name}"`);
+				for (const check of incoming) if (!(check.domain.toLowerCase().split(".")[0] ?? "").includes(entry.label)) throw new StoreError(`"${check.domain}" does not belong to "${entry.name}"; its first label must contain "${entry.label}".`);
+				checks.domains = mergeBy(checks.domains, incoming, (c) => c.domain);
+				return {
+					name: entry.label,
+					kind: batch.kind,
+					stored: checks.domains.length
+				};
+			}
+			const incoming = parseOrThrow(array(ResearchResultSchema), batch.results, `Invalid ${batch.kind} results for "${batch.name}"`);
+			const bucket = RESEARCH_BUCKET[batch.kind];
+			checks[bucket] = mergeResearch(batch.kind, checks[bucket], incoming);
+			return {
+				name: entry.label,
+				kind: batch.kind,
+				stored: checks[bucket].length
+			};
+		}));
+	}
+	addNotes(slug, notes) {
+		return this.update(slug, (project, at) => {
+			for (const note of notes) {
+				const entry = findName(project, note.name);
+				const kind = note.kind ?? "general";
+				if (kind === "language" && note.language !== void 0) entry.notes = entry.notes.filter((n) => !(n.kind === "language" && n.language === note.language));
+				entry.notes.push({
+					kind,
+					text: note.text,
+					...note.language === void 0 ? {} : { language: note.language },
+					severity: note.severity ?? "low",
+					createdAt: at
+				});
+			}
+			return { added: notes.length };
+		});
+	}
+	setShortlist(slug, names, mode = "set") {
+		return this.update(slug, (project) => {
+			const labels = names.map((name) => findName(project, name).label);
+			if (mode === "remove") {
+				const drop = new Set(labels);
+				project.shortlist = project.shortlist.filter((label) => !drop.has(label));
+			} else {
+				const base = mode === "add" ? project.shortlist : [];
+				project.shortlist = [.../* @__PURE__ */ new Set([...base, ...labels])];
+			}
+			return project.shortlist;
+		});
+	}
+	async updateBrief(slug, brief) {
+		const data = parseOrThrow(BriefSchema, brief, "Invalid brief");
+		return this.update(slug, (project, at) => {
+			project.briefHistory.push(project.brief);
+			project.brief = {
+				version: project.brief.version + 1,
+				createdAt: at,
+				data
+			};
+			return { briefVersion: project.brief.version };
+		});
+	}
+	/** Loads, changes, and writes one project under a per-slug lock. Nothing is written on a throw. */
+	update(slug, change) {
+		return this.lock(slug, async () => {
+			const loaded = await this.get(slug);
+			const at = this.now().toISOString();
+			const result = change(loaded.project, at);
+			loaded.project.updatedAt = at;
+			await this.write(loaded.project);
+			return {
+				result,
+				loaded
+			};
+		});
+	}
+	async write(project) {
+		const valid = parseOrThrow(ProjectSchema, project, "Refusing to save an invalid project");
+		await writeJsonWithBackup(this.paths(project.slug).projectFile, valid, parseProject);
+	}
+	/** Claims a slug by creating its folder; mkdir fails with EEXIST when the slug is taken. */
+	async claimSlug(base) {
+		for (let n = 1; n < 1e3; n++) {
+			const slug = n === 1 ? base : `${base}-${n}`;
+			try {
+				await mkdir(join(this.dir, slug));
+				return slug;
+			} catch (error) {
+				if (!isExists(error)) throw error;
+			}
+		}
+		throw new StoreError(`No free project slug for "${base}".`);
+	}
+	/** Runs tasks for the same key one after another. */
+	lock(key, task) {
+		const run = (this.locks.get(key) ?? Promise.resolve()).then(task);
+		const settled = run.catch(() => void 0);
+		this.locks.set(key, settled);
+		settled.then(() => {
+			if (this.locks.get(key) === settled) this.locks.delete(key);
+		});
+		return run;
+	}
+};
+// src/store/runtime-part.ts
+function createStoreRuntime(paths, _deps) {
+	return {
+		projectStore: new ProjectStore(paths.projects),
+		rulesetStore: new RulesetStore(paths.rulesets)
+	};
+}
 // src/runtime.ts
 function createRuntime(env = process.env) {
-	const cache = new DiskCache(enginePaths(engineHome(env)).cache);
+	const paths = enginePaths(engineHome(env));
+	const cache = new DiskCache(paths.cache);
 	const limiter = new HostLimiter();
 	const http = createHttp({ limiter });
 	const whoisQuery = tcpWhoisQuery();
@@ -8348,7 +12174,27 @@ function createRuntime(env = process.env) {
 		}),
 		dns: (domain) => hasNameservers(domain)
 	};
-	return { checkDomains: (domains) => checkDomains(domains, deps) };
+	return {
+		checkDomains: (domains) => checkDomains(domains, deps),
+		...createStoreRuntime(paths, {
+			http,
+			limiter,
+			cache
+		}),
+		...createResearchRuntime({
+			http,
+			limiter,
+			cache,
+			env,
+			rdapServers: getServers,
+			whoisQuery
+		}),
+		...createRegistrarRuntime({
+			http,
+			cache,
+			env
+		})
+	};
 }
 // node_modules/.pnpm/zod@4.6.7/node_modules/zod/v3/helpers/util.js
 var util;
@@ -22082,6 +25928,10 @@ function registerCheckDomains(server, rt) {
 		inputSchema: {
 			names: array(string()).min(1).max(100).describe("Second-level labels without TLD, e.g. \"acme\""),
 			tlds: array(string()).min(1).max(30).describe("TLDs with or without a leading dot, e.g. \"com\", \".io\"; multi-label values must be registry suffixes such as \"co.uk\"")
+		},
+		annotations: {
+			readOnlyHint: true,
+			openWorldHint: true
 		}
 	}, async ({ names, tlds }) => {
 		let domains;
@@ -22098,6 +25948,414 @@ function registerCheckDomains(server, rt) {
 		});
 	});
 }
+// src/tools/project-common.ts
+const READ_ONLY = {
+	readOnlyHint: true,
+	openWorldHint: false
+};
+const LOCAL_WRITE = {
+	readOnlyHint: false,
+	destructiveHint: false,
+	idempotentHint: false,
+	openWorldHint: false
+};
+const LOCAL_OVERWRITE = {
+	readOnlyHint: false,
+	destructiveHint: true,
+	idempotentHint: true,
+	openWorldHint: false
+};
+const LOCAL_DELETE = {
+	readOnlyHint: false,
+	destructiveHint: true,
+	idempotentHint: false,
+	openWorldHint: false
+};
+/** Runs a store-backed tool body and turns expected store failures into tool errors. */
+async function runStoreTool(task) {
+	try {
+		return await task();
+	} catch (error) {
+		if (error instanceof StoreError || error instanceof ValidationError) return toolError(error.message);
+		throw error;
+	}
+}
+/** A warning to attach to a tool result when project.json was read from its backup. */
+function recoveryWarning(loaded) {
+	if (!loaded.recoveredFromBackup) return {};
+	return { warning: `project.json could not be read (${loaded.problem ?? "unknown problem"}); the backup project.json.bak was used. Changes made after that backup are lost; tell the user.` };
+}
+/** Throws StoreError naming the first ruleset id that does not exist. */
+async function assertRulesetsExist(rt, ids) {
+	for (const id of ids) await rt.rulesetStore.get(id);
+}
+// src/tools/project-add-checks.ts
+const EMPTY_OK = /* @__PURE__ */ new Set(["trademark", "competitor"]);
+function registerProjectAddChecks(server, rt) {
+	server.registerTool("project_add_checks", {
+		title: "Attach check results to names",
+		description: "Store check results under a name. kind \"domain\" takes check_domains results as returned. kinds \"profile\", \"handle\", and \"trademark\" take profile_domain, check_handles, and search_trademarks results as returned; kind \"competitor\" takes competitor-scan findings (source \"websearch\", checkedAt, url). Non-domain results are stored as given. Newer results replace older ones for the same domain (domain, profile) or platform (handle); a new trademark or competitor batch replaces the previous one, and an empty results list for those two kinds clears it.",
+		inputSchema: {
+			slug: string().min(1).max(60),
+			checks: array(object$1({
+				name: string().min(1).max(63).describe("Name or label already in the project"),
+				kind: _enum(CHECK_KINDS),
+				results: array(record(string(), unknown())).max(200)
+			})).min(1).max(100).superRefine((batches, ctx) => {
+				batches.forEach((batch, index) => {
+					if (batch.results.length === 0 && !EMPTY_OK.has(batch.kind)) ctx.addIssue({
+						code: "custom",
+						path: [index, "results"],
+						message: `kind "${batch.kind}" needs at least one result; only trademark and competitor accept an empty list to clear the batch.`
+					});
+				});
+			})
+		},
+		annotations: LOCAL_WRITE
+	}, async ({ slug, checks }) => runStoreTool(async () => {
+		const { result, loaded } = await rt.projectStore.addChecks(slug, checks);
+		return toolJson({
+			stored: result,
+			...recoveryWarning(loaded)
+		});
+	}));
+}
+// src/tools/project-add-names.ts
+function registerProjectAddNames(server, rt) {
+	server.registerTool("project_add_names", {
+		title: "Add names to a project",
+		description: "Add generated or user-supplied names. Each name records its ruleset and the current brief version. Give scoreParts (0-10 per criterion); the server computes score (0-100) with the ruleset weights. Duplicates and names from rulesets outside the brief are skipped with a reason.",
+		inputSchema: {
+			slug: string().min(1).max(60),
+			names: array(object$1({
+				name: nonBlank(63).describe("Display form, e.g. \"Leftover Lab\""),
+				label: string().max(63).optional().describe("Domain label if it differs from the name without spaces"),
+				rulesetId: string().min(1).max(40).describe(`Ruleset the name came from, or "${USER_RULESET}" for a name the user supplied`),
+				strategy: _enum(NAME_STYLES).optional(),
+				rationale: nonBlank(500).optional().describe("One line on why the name fits the brief"),
+				scoreParts: ScorePartsSchema.optional().describe("Ratings 0-10: length, say, spell, meaning, uniqueness, price. Leave price out until prices are known.")
+			})).min(1).max(100)
+		},
+		annotations: LOCAL_WRITE
+	}, async ({ slug, names }) => runStoreTool(async () => {
+		const weights = /* @__PURE__ */ new Map();
+		for (const id of new Set(names.map((n) => n.rulesetId))) {
+			if (id === "user") continue;
+			try {
+				weights.set(id, (await rt.rulesetStore.get(id)).ruleset.weights);
+			} catch (error) {
+				if (!(error instanceof StoreError)) throw error;
+			}
+		}
+		const { result, loaded } = await rt.projectStore.addNames(slug, names, weights);
+		return toolJson({
+			added: result.added.map(({ name, label, rulesetId, score }) => ({
+				name,
+				label,
+				rulesetId,
+				score
+			})),
+			skipped: result.skipped,
+			...recoveryWarning(loaded)
+		});
+	}));
+}
+// src/tools/project-add-notes.ts
+function registerProjectAddNotes(server, rt) {
+	server.registerTool("project_add_notes", {
+		title: "Attach notes to names",
+		description: "Append notes to names, for example language-check findings (kind \"language\", language as a BCP 47 code). severity is the risk level: low, medium, or high.",
+		inputSchema: {
+			slug: string().min(1).max(60),
+			notes: array(object$1({
+				name: string().min(1).max(63).describe("Name or label already in the project"),
+				text: nonBlank(2e3),
+				kind: nonBlank(40).optional().describe("Defaults to \"general\""),
+				language: string().regex(LANGUAGE_CODE).optional(),
+				severity: _enum(NOTE_SEVERITIES).optional().describe("Defaults to \"low\"")
+			})).min(1).max(200)
+		},
+		annotations: LOCAL_WRITE
+	}, async ({ slug, notes }) => runStoreTool(async () => {
+		const { result, loaded } = await rt.projectStore.addNotes(slug, notes);
+		return toolJson({
+			...result,
+			...recoveryWarning(loaded)
+		});
+	}));
+}
+// src/tools/project-create.ts
+function registerProjectCreate(server, rt) {
+	server.registerTool("project_create", {
+		title: "Create a naming project",
+		description: "Create a project from a brief the user has confirmed. Rejects a brief with missing required fields or unknown ruleset ids. Returns the slug that every other project_* tool takes, and the project paths.",
+		inputSchema: {
+			brief: BriefSchema,
+			title: nonBlank(80).optional().describe("Short project title; the slug is derived from it. Defaults to subject.what.")
+		},
+		annotations: LOCAL_WRITE
+	}, async ({ brief, title }) => runStoreTool(async () => {
+		await assertRulesetsExist(rt, brief.nameRules.rulesets);
+		const { project, paths } = await rt.projectStore.create(brief, title);
+		return toolJson({
+			slug: project.slug,
+			title: project.title,
+			briefVersion: project.brief.version,
+			paths
+		});
+	}));
+}
+// src/tools/project-get.ts
+function registerProjectGet(server, rt) {
+	server.registerTool("project_get", {
+		title: "Read a naming project",
+		description: "Read a full project: brief (current version and history), names with ruleset, brief version, score and notes, checks keyed by name label, and shortlist. Also returns paths, including reportFile for report.md. If project.json was damaged, the backup is returned with a warning.",
+		inputSchema: { slug: string().min(1).max(60).describe("Project slug from project_list") },
+		annotations: READ_ONLY
+	}, async ({ slug }) => runStoreTool(async () => {
+		const loaded = await rt.projectStore.get(slug);
+		return toolJson({
+			project: loaded.project,
+			paths: loaded.paths,
+			recoveredFromBackup: loaded.recoveredFromBackup,
+			...recoveryWarning(loaded)
+		});
+	}));
+}
+// src/tools/project-list.ts
+function registerProjectList(server, rt) {
+	server.registerTool("project_list", {
+		title: "List naming projects",
+		description: "List saved projects, newest first, with slug, title, brief version, rulesets, and name and shortlist counts. Unreadable projects are listed under invalid.",
+		inputSchema: {},
+		annotations: READ_ONLY
+	}, async () => runStoreTool(async () => toolJson(await rt.projectStore.list())));
+}
+// src/tools/project-shortlist.ts
+function registerProjectShortlist(server, rt) {
+	server.registerTool("project_shortlist", {
+		title: "Set the shortlist",
+		description: "Set, extend, or trim the shortlist of names for research and the report. mode \"set\" (default) replaces it, \"add\" appends, \"remove\" drops. An empty list with mode \"set\" clears it.",
+		inputSchema: {
+			slug: string().min(1).max(60),
+			names: array(string().min(1).max(63)).max(50),
+			mode: _enum([
+				"set",
+				"add",
+				"remove"
+			]).default("set")
+		},
+		annotations: LOCAL_OVERWRITE
+	}, async ({ slug, names, mode }) => runStoreTool(async () => {
+		const { result, loaded } = await rt.projectStore.setShortlist(slug, names, mode);
+		return toolJson({
+			shortlist: result,
+			...recoveryWarning(loaded)
+		});
+	}));
+}
+// src/tools/project-update-brief.ts
+function registerProjectUpdateBrief(server, rt) {
+	server.registerTool("project_update_brief", {
+		title: "Save a new brief version",
+		description: "Replace the brief with an edited, user-confirmed version. The old brief moves to briefHistory and the version number goes up by one; existing names keep the version they were made with.",
+		inputSchema: {
+			slug: string().min(1).max(60),
+			brief: BriefSchema
+		},
+		annotations: LOCAL_WRITE
+	}, async ({ slug, brief }) => runStoreTool(async () => {
+		await assertRulesetsExist(rt, brief.nameRules.rulesets);
+		const { result, loaded } = await rt.projectStore.updateBrief(slug, brief);
+		return toolJson({
+			slug,
+			...result,
+			...recoveryWarning(loaded)
+		});
+	}));
+}
+// src/tools/ruleset-delete.ts
+function registerRulesetDelete(server, rt) {
+	server.registerTool("ruleset_delete", {
+		title: "Delete a custom ruleset",
+		description: "Delete a custom ruleset file. Built-in rulesets cannot be deleted. Projects keep the ruleset id on names they already have.",
+		inputSchema: { id: string().min(1).max(40).describe("Custom ruleset id") },
+		annotations: LOCAL_DELETE
+	}, async ({ id }) => runStoreTool(async () => {
+		await rt.rulesetStore.delete(id);
+		return toolJson({ deleted: id });
+	}));
+}
+// src/tools/ruleset-get.ts
+function registerRulesetGet(server, rt) {
+	server.registerTool("ruleset_get", {
+		title: "Read a naming ruleset",
+		description: "Read one ruleset in full: styles and weights, length, filters, TLD order and .com policy, fallback affixes, and score weights.",
+		inputSchema: { id: string().min(1).max(40).describe("Ruleset id from ruleset_list") },
+		annotations: READ_ONLY
+	}, async ({ id }) => runStoreTool(async () => toolJson(await rt.rulesetStore.get(id))));
+}
+// src/tools/ruleset-list.ts
+function registerRulesetList(server, rt) {
+	server.registerTool("ruleset_list", {
+		title: "List naming rulesets",
+		description: "List the 9 built-in and any custom naming rulesets with id, name, description, examples, and builtin flag. Custom files that fail validation are listed under invalid.",
+		inputSchema: {},
+		annotations: READ_ONLY
+	}, async () => runStoreTool(async () => toolJson(await rt.rulesetStore.list())));
+}
+// src/tools/ruleset-save.ts
+function registerRulesetSave(server, rt) {
+	server.registerTool("ruleset_save", {
+		title: "Save a custom ruleset",
+		description: "Create or replace a custom ruleset in ~/.domain-engine/rulesets/<id>.json. Built-in ids cannot be used. To copy a built-in, read it with ruleset_get, change the id and fields, then save.",
+		inputSchema: { ruleset: RulesetSchema },
+		annotations: LOCAL_OVERWRITE
+	}, async ({ ruleset }) => runStoreTool(async () => toolJson(await rt.rulesetStore.save(ruleset))));
+}
+// src/tools/register-plan2.ts
+/** Registers every Plan 2 tool: rulesets and the project store. */
+function registerPlan2Tools(server, rt) {
+	registerRulesetList(server, rt);
+	registerRulesetGet(server, rt);
+	registerRulesetSave(server, rt);
+	registerRulesetDelete(server, rt);
+	registerProjectCreate(server, rt);
+	registerProjectList(server, rt);
+	registerProjectGet(server, rt);
+	registerProjectAddNames(server, rt);
+	registerProjectAddChecks(server, rt);
+	registerProjectAddNotes(server, rt);
+	registerProjectShortlist(server, rt);
+	registerProjectUpdateBrief(server, rt);
+}
+// src/tools/check-handles.ts
+const HANDLES_NOTE = "taken and likely_available come from official APIs (GitHub, npm, PyPI; Reddit and YouTube only with keys). likely_available means the API found no account or package; the platform may still reserve or block the name. unknown with method \"manual\" means no reliable open method exists: open profileUrl to check by hand. invalid means the name breaks the platform rules.";
+function registerCheckHandles(server, rt) {
+	server.registerTool("check_handles", {
+		title: "Check social handles and package names",
+		description: "Check each handle on each platform. Each result is taken, likely_available, unknown, or invalid, with method (api, manual, none), source, checkedAt, confidence, and a profile URL for manual checks.",
+		inputSchema: {
+			handles: array(string().min(1).max(100)).min(1).max(20).describe("Handles without platform prefix; a leading \"@\" is ignored"),
+			platforms: array(_enum(PLATFORMS)).min(1).optional().describe(`Platforms to check; default all: ${PLATFORMS.join(", ")}`)
+		},
+		annotations: {
+			readOnlyHint: true,
+			openWorldHint: true
+		}
+	}, async ({ handles, platforms }) => {
+		const list = [...new Set(platforms ?? PLATFORMS)];
+		return toolJson({
+			results: await rt.checkHandles(handles, list),
+			note: HANDLES_NOTE
+		});
+	});
+}
+// src/tools/profile-domain.ts
+const PROFILE_NOTE = "Status comes from RDAP/WHOIS registration data, parking nameservers, and one GET of the homepage. for_sale and parked are heuristics; a site that refuses automated access is reported as live_site with low confidence and is never retried or bypassed.";
+function registerProfileDomain(server, rt) {
+	server.registerTool("profile_domain", {
+		title: "Profile a taken domain",
+		description: "For one registered domain: creation and expiry dates, registrar, nameservers, parking provider, homepage status and title, and a verdict of live_site, parked, for_sale, no_site, not_registered, or unknown, with source, checkedAt, and confidence.",
+		inputSchema: { domain: string().min(3).max(253).describe("Full domain name, e.g. \"acme.com\"") },
+		annotations: {
+			readOnlyHint: true,
+			openWorldHint: true
+		}
+	}, async ({ domain }) => {
+		try {
+			return toolJson({
+				profile: await rt.profileDomain(domain),
+				note: PROFILE_NOTE
+			});
+		} catch (error) {
+			if (error instanceof ValidationError) return toolError(error.message);
+			throw error;
+		}
+	});
+}
+// src/tools/search-trademarks.ts
+function registerSearchTrademarks(server, rt) {
+	server.registerTool("search_trademarks", {
+		title: "Search trademarks",
+		description: "Search for marks whose word element contains the given mark. EUIPO is queried when EUIPO_CLIENT_ID and EUIPO_CLIENT_SECRET are set; USPTO and WIPO have no usable open API and return unknown. Always returns direct search links for USPTO, EUIPO, TMview, and WIPO.",
+		inputSchema: {
+			mark: string().trim().min(1).max(100).describe("The brand name to search, e.g. \"acme\""),
+			niceClasses: array(number().int().min(1).max(45)).max(10).optional().describe("Optional Nice classes to limit the search, e.g. [9, 42]")
+		},
+		annotations: {
+			readOnlyHint: true,
+			openWorldHint: true
+		}
+	}, async ({ mark, niceClasses }) => toolJson(await rt.searchTrademarks({
+		mark,
+		niceClasses
+	})));
+}
+// src/tools/register-plan3.ts
+/** Registers the research tools: profile_domain, check_handles, search_trademarks. */
+function registerPlan3Tools(server, rt) {
+	registerProfileDomain(server, rt);
+	registerCheckHandles(server, rt);
+	registerSearchTrademarks(server, rt);
+}
+// src/tools/registrar-quote.ts
+function registerRegistrarQuote(server, rt) {
+	server.registerTool("registrar_quote", {
+		title: "Registrar quote for exact domains",
+		description: "For exact domains: per-registrar first-year, renewal, and 3-year prices. Without registrar API keys it returns bundled table prices only. With keys it adds live availability, the premium flag, and live prices from that registrar API (cached 1 hour). Every price has a label naming its origin and time.",
+		inputSchema: { domains: array(string()).min(1).max(20).describe("Fully qualified domains, e.g. \"zentrova.site\"") },
+		annotations: {
+			readOnlyHint: true,
+			openWorldHint: true
+		}
+	}, async ({ domains }) => {
+		try {
+			return toolJson(await rt.registrarQuote(domains));
+		} catch (error) {
+			if (error instanceof ValidationError) return toolError(error.message);
+			throw error;
+		}
+	});
+}
+// src/tools/registrar-status.ts
+function registerRegistrarStatus(server, rt) {
+	server.registerTool("registrar_status", {
+		title: "Registrar API key status",
+		description: "Which registrars (Spaceship, Namecheap, Cloudflare) have API keys configured through environment variables, and which variable names are missing. Also lists the optional research key names and whether each is set. Never returns key values.",
+		annotations: {
+			readOnlyHint: true,
+			openWorldHint: false
+		}
+	}, async () => toolJson(rt.registrarStatus()));
+}
+// src/tools/tld-info.ts
+function registerTldInfo(server, rt) {
+	server.registerTool("tld_info", {
+		title: "TLD registrars, prices, and reputation",
+		description: "For one TLD: which registrars sell it, first-year, renewal, and transfer reference prices per registrar from the bundled dated table, the cheapest 3-year option per currency, and the TLD reputation note. Every price carries its source and check date.",
+		inputSchema: { tld: string().describe("TLD with or without a leading dot, e.g. \"site\" or \".co.uk\"") },
+		annotations: {
+			readOnlyHint: true,
+			openWorldHint: false
+		}
+	}, async ({ tld }) => {
+		let normalized;
+		try {
+			normalized = normalizeTld(tld);
+		} catch (error) {
+			if (error instanceof ValidationError) return toolError(error.message);
+			throw error;
+		}
+		return toolJson(rt.tldInfo(normalized));
+	});
+}
+// src/tools/register-plan4.ts
+function registerPlan4Tools(server, rt) {
+	registerTldInfo(server, rt);
+	registerRegistrarQuote(server, rt);
+	registerRegistrarStatus(server, rt);
+}
 // src/server.ts
 const SERVER_INFO = {
 	name: "domain-name-engine",
@@ -22106,8 +26364,44 @@ const SERVER_INFO = {
 function createServer(rt) {
 	const server = new McpServer(SERVER_INFO);
 	registerCheckDomains(server, rt);
+	registerPlan2Tools(server, rt);
+	registerPlan3Tools(server, rt);
+	registerPlan4Tools(server, rt);
 	return server;
 }
+// src/startup.ts
+/** Keys of the research tools. Their values are never read here, only redacted from messages. */
+const RESEARCH_KEYS = [
+	"GITHUB_TOKEN",
+	"REDDIT_CLIENT_ID",
+	"REDDIT_CLIENT_SECRET",
+	"YOUTUBE_API_KEY",
+	"EUIPO_CLIENT_ID",
+	"EUIPO_CLIENT_SECRET"
+];
+function researchSecrets(env) {
+	return RESEARCH_KEYS.map((name) => env[name] ?? "").filter((v) => v.length >= 4);
+}
+const processIo = {
+	stderr: (text) => process.stderr.write(text),
+	exit: (code) => process.exit(code),
+	env: process.env
+};
+/**
+* Runs the server start function. On failure it writes one clean line to stderr
+* (stdout belongs to the MCP protocol) and exits with code 1. Key values are redacted.
+*/
+async function runStartup(start, io = processIo) {
+	try {
+		await start();
+	} catch (error) {
+		const message = redact(errorMessage(error), [...secretValues(readCredentials(io.env)), ...researchSecrets(io.env)].sort((a, b) => b.length - a.length));
+		io.stderr(`domain-name-engine: failed to start: ${message}\n`);
+		io.exit(1);
+	}
+}
 // src/index.ts
-await createServer(createRuntime()).connect(new StdioServerTransport());
+await runStartup(async () => {
+	await createServer(createRuntime()).connect(new StdioServerTransport());
+});
 export {};
