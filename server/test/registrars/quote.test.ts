@@ -97,6 +97,24 @@ describe('quoteDomains with live clients', () => {
     expect(result.quotes[0]?.registrars[0]?.priceSource).toBe('table');
   });
 
+  it('sets sale to listed when a live registrar price exists, even if the table says not_sold (M5)', async () => {
+    const tables = testTables();
+    tables.registrars.registrars.spaceship.notSold = ['zzz'];
+    const { client } = liveClient('spaceship', () => ({
+      firstYear: 3,
+      renewal: 12,
+      currency: 'EUR',
+    }));
+    const result = await quoteDomains(['zentrova.zzz'], {
+      tables,
+      clients: [client],
+      cache: await cache(),
+      secrets: [],
+      now: () => FIXED_NOW,
+    });
+    expect(result.quotes[0]?.registrars[0]).toMatchObject({ priceSource: 'live', sale: 'listed' });
+  });
+
   it('drops the table price for a premium name without a live price', async () => {
     const { client } = liveClient('spaceship', () => ({ premium: true }));
     const result = await quoteDomains(['zentrova.site'], {

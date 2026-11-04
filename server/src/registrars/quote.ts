@@ -126,6 +126,8 @@ function merge(table: TldRegistrarEntry, live: LiveQuote | undefined): Registrar
     return {
       ...withLive,
       priceSource: 'live',
+      // A live price proves the registrar sells the TLD, whatever the table says.
+      sale: 'listed',
       firstYear: live.firstYear,
       renewal: live.renewal,
       transfer: null,
