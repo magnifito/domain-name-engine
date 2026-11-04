@@ -1,6 +1,6 @@
 ---
 name: brief
-description: Use when starting or editing the brief for a brand naming project - the user describes a product, startup, or personal brand that needs a name or domain, hands over a filled brief template, or wants to change a brief, its rulesets, or a custom naming ruleset. Fills the fixed 7-section questionnaire, picks 1-3 naming rulesets, confirms with the user, and saves the project.
+description: Use when the user wants to start, fill in, or edit the naming brief of a brand project, hands over a filled brief template, wants to change a brief or its rulesets, wants a custom naming ruleset, or asks to run only the brief step on its own. For a general request to find a name or domain, use find-domain instead. Fills the fixed 7-section questionnaire, picks 1-3 naming rulesets, confirms with the user, and saves the project.
 ---
 
 # Brief
