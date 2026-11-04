@@ -1,0 +1,22 @@
+{
+  "objectClassName": "domain",
+  "ldhName": "PARKEDEXAMPLE.COM",
+  "status": ["client transfer prohibited"],
+  "events": [
+    { "eventAction": "registration", "eventDate": "2014-03-02T10:11:12Z" },
+    { "eventAction": "expiration", "eventDate": "2027-03-02T10:11:12Z" },
+    { "eventAction": "last update of RDAP database", "eventDate": "2026-11-04T08:00:00Z" }
+  ],
+  "entities": [
+    {
+      "objectClassName": "entity",
+      "handle": "1234",
+      "roles": ["registrar"],
+      "vcardArray": [
+        "vcard",
+        [["version", {}, "text", "4.0"], ["fn", {}, "text", "Example Registrar, LLC"]]
+      ]
+    }
+  ],
+  "nameservers": [{ "ldhName": "NS1.SEDOPARKING.COM" }, { "ldhName": "NS2.SEDOPARKING.COM" }]
+}
