@@ -2,6 +2,7 @@ import type { DiskCache } from '../cache/cache.js';
 import { TTL } from '../cache/ttl.js';
 import type { RdapResult } from '../sources/rdap.js';
 import type { WhoisResult } from '../sources/whois.js';
+import { errorMessage } from '../util/errors.js';
 import { splitDomain } from './name.js';
 import type { CheckSource, Confidence, DomainCheck } from './types.js';
 
@@ -56,24 +57,49 @@ function whoisReason(result: WhoisResult): string {
   return `WHOIS: response from ${result.server} not understood`;
 }
 
+// A rejecting source must degrade to "no answer" instead of failing the whole batch.
+async function safeRdap(domain: string, tld: string, deps: CheckDeps): Promise<RdapResult> {
+  try {
+    return await deps.rdap(domain, tld);
+  } catch (error) {
+    return { kind: 'error', reason: errorMessage(error) };
+  }
+}
+
+async function safeWhois(domain: string, tld: string, deps: CheckDeps): Promise<WhoisResult> {
+  try {
+    return await deps.whois(domain, tld);
+  } catch (error) {
+    return { kind: 'error', reason: errorMessage(error) };
+  }
+}
+
+async function safeDns(domain: string, deps: CheckDeps): Promise<boolean | null> {
+  try {
+    return await deps.dns(domain);
+  } catch {
+    return null;
+  }
+}
+
 async function resolveStatus(domain: string, tld: string, deps: CheckDeps): Promise<DomainCheck> {
   const base: Base = { domain, checkedAt: (deps.now?.() ?? new Date()).toISOString() };
 
-  const rdap = await deps.rdap(domain, tld);
+  const rdap = await safeRdap(domain, tld, deps);
   if (rdap.kind === 'registered') {
     return { ...base, status: 'registered', source: 'rdap', confidence: 'high' };
   }
-  if (rdap.kind === 'not_found') return notFound(base, 'rdap', 'high', await deps.dns(domain));
+  if (rdap.kind === 'not_found') return notFound(base, 'rdap', 'high', await safeDns(domain, deps));
 
-  const whois = await deps.whois(domain, tld);
+  const whois = await safeWhois(domain, tld, deps);
   if (whois.kind === 'registered') {
     return { ...base, status: 'registered', source: 'whois', confidence: 'high' };
   }
   if (whois.kind === 'not_found') {
-    return notFound(base, 'whois', 'medium', await deps.dns(domain));
+    return notFound(base, 'whois', 'medium', await safeDns(domain, deps));
   }
 
-  if ((await deps.dns(domain)) === true) {
+  if ((await safeDns(domain, deps)) === true) {
     return {
       ...base,
       status: 'registered',
@@ -94,7 +120,12 @@ async function resolveStatus(domain: string, tld: string, deps: CheckDeps): Prom
 export async function checkDomain(domain: string, deps: CheckDeps): Promise<DomainCheck> {
   const { tld } = splitDomain(domain);
   const key = `domain:${domain}`;
-  const cached = await deps.cache.get<DomainCheck>(key);
+  let cached: DomainCheck | undefined;
+  try {
+    cached = await deps.cache.get<DomainCheck>(key);
+  } catch {
+    // A broken cache is treated as a miss.
+  }
   if (cached) return cached;
   const result = await resolveStatus(domain, tld, deps);
   try {
@@ -110,6 +141,7 @@ export async function checkDomains(
   deps: CheckDeps,
   concurrency = 4,
 ): Promise<DomainCheck[]> {
+  const workers = Number.isFinite(concurrency) ? Math.max(1, Math.floor(concurrency)) : 1;
   const results: DomainCheck[] = new Array(domains.length);
   let next = 0;
   const worker = async (): Promise<void> => {
@@ -118,6 +150,6 @@ export async function checkDomains(
       results[index] = await checkDomain(domains[index] as string, deps);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, domains.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(workers, domains.length) }, worker));
   return results;
 }
