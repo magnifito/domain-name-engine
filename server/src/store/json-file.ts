@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { readFile, rename } from 'node:fs/promises';
 import { writeFileAtomic } from '../fs/atomic.js';
 import { errorMessage } from '../util/errors.js';
@@ -96,7 +97,7 @@ export async function writeJsonWithBackup(
     } else {
       // Keep the invalid file for manual recovery instead of overwriting it.
       const stamp = new Date().toISOString().replaceAll(':', '-');
-      await rename(path, `${path}.corrupt-${stamp}`);
+      await rename(path, `${path}.corrupt-${stamp}-${randomBytes(3).toString('hex')}`);
     }
   }
   await writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`);

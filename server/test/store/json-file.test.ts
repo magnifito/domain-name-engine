@@ -1,7 +1,7 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { dirname, join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 import { StoreError } from '../../src/store/errors.js';
 import { isNotFound } from '../../src/store/fs-utils.js';
 import { backupPath, readJsonWithBackup, writeJsonWithBackup } from '../../src/store/json-file.js';
@@ -45,6 +45,25 @@ describe('writeJsonWithBackup', () => {
     await writeJsonWithBackup(path, { n: 3 }, parseDoc);
     expect(JSON.parse(await readFile(backupPath(path), 'utf8'))).toEqual({ n: 1 });
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ n: 3 });
+  });
+});
+
+describe('corrupt file preservation', () => {
+  it('keeps both corrupt files when two are moved aside within the same millisecond', async () => {
+    const path = await file();
+    await writeJsonWithBackup(path, { n: 1 }, parseDoc);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-04T10:00:00.000Z'));
+      await writeFile(path, 'bad-one');
+      await writeJsonWithBackup(path, { n: 2 }, parseDoc);
+      await writeFile(path, 'bad-two');
+      await writeJsonWithBackup(path, { n: 3 }, parseDoc);
+    } finally {
+      vi.useRealTimers();
+    }
+    const corrupt = (await readdir(dirname(path))).filter((f) => f.includes('.corrupt-'));
+    expect(corrupt).toHaveLength(2);
   });
 });
 
