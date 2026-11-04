@@ -1,0 +1,5 @@
+{
+  "com": { "registration": 10.46, "renewal": 10.46, "updatedAt": "2026-10-13" },
+  "site": { "registration": 4.99, "renewal": 27.7, "updatedAt": "2026-10-13" },
+  "broken": { "registration": 1 }
+}
