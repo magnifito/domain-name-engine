@@ -49,6 +49,17 @@ describe('analyzePage', () => {
     expect(analyzePage('', 'https://www.afternic.com/forsale/acme.com').forSale).toBe(true);
   });
 
+  it('does not flag a marketplace host when it is the profiled domain itself', () => {
+    expect(analyzePage('<p>Hello</p>', 'https://www.godaddy.com/', 'godaddy.com').forSale).toBe(
+      false,
+    );
+    expect(analyzePage('', 'https://afternic.com/', 'afternic.com').forSale).toBe(false);
+  });
+
+  it('still flags a redirect from another domain to a marketplace', () => {
+    expect(analyzePage('', 'https://www.godaddy.com/x', 'acme.com').forSale).toBe(true);
+  });
+
   it('flags parking wording', () => {
     expect(analyzePage('<div>Related Searches</div>', 'https://acme.com/').parkedPage).toBe(true);
   });
@@ -81,6 +92,13 @@ describe('readCapped', () => {
     expect(text).toHaveLength(1000);
     // The cap is 10 chunks; the stream may prefetch a little (highWaterMark) but must not run on.
     expect(pulls).toBeLessThanOrEqual(12);
+  });
+});
+
+describe('fetchHomepage marketplace domains', () => {
+  it('does not call godaddy.com for sale just because it is a marketplace host', async () => {
+    const http: HttpFetch = async () => html('<title>GoDaddy</title>');
+    expect(await fetchHomepage('godaddy.com', http)).toMatchObject({ forSale: false });
   });
 });
 

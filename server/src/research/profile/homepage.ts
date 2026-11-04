@@ -68,14 +68,18 @@ export function extractTitle(html: string): string | undefined {
   return title || undefined;
 }
 
-export function analyzePage(html: string, finalUrl: string): PageSignals {
+/** `domain` is the profiled domain: a marketplace is only a for-sale signal when the page is elsewhere. */
+export function analyzePage(html: string, finalUrl: string, domain?: string): PageSignals {
   const text = html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ');
   const host = hostOf(finalUrl);
+  const isProfiled = domain !== undefined && (host === domain || host === `www.${domain}`);
   const onMarketplace =
-    host !== undefined && MARKETPLACE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+    host !== undefined &&
+    !isProfiled &&
+    MARKETPLACE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
   return {
     title: extractTitle(html),
     forSale: onMarketplace || FOR_SALE_PATTERNS.some((pattern) => pattern.test(text)),
@@ -145,7 +149,13 @@ export async function fetchHomepage(domain: string, http: HttpFetch): Promise<Ho
       let html = '';
       if (isHtml) html = await readCapped(res);
       else void res.body?.cancel().catch(() => undefined);
-      return { kind: 'ok', url, finalUrl, httpStatus: res.status, ...analyzePage(html, finalUrl) };
+      return {
+        kind: 'ok',
+        url,
+        finalUrl,
+        httpStatus: res.status,
+        ...analyzePage(html, finalUrl, domain),
+      };
     } catch (error) {
       if (error instanceof BlockedError || error instanceof TooManyRedirects) {
         return {
