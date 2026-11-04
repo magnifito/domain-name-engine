@@ -47,6 +47,8 @@ The skills call these tools. You can also call them directly.
 
 All keys are optional and read from environment variables only. Set them in the shell that starts Claude Code, for example in `~/.zshrc`. The plugin passes them to its server. Keys never appear in tool output, logs, the cache, or project files. Ask Claude to run `registrar_status` to see which keys the server found.
 
+For step-by-step instructions on getting each key, see [docs/api-keys.md](docs/api-keys.md).
+
 ### Registrars
 
 Without registrar keys, `registrar_quote` returns prices from the bundled table only, and premium names cannot be detected.
