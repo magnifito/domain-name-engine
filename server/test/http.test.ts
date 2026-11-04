@@ -77,4 +77,32 @@ describe('createHttp', () => {
     const res = new Response('', { status: 429, headers: { 'retry-after': '9999' } });
     expect(retryDelayMs(res, 0, 100)).toBe(60_000);
   });
+
+  it('honors a caller-supplied abort signal', async () => {
+    const { http, calls } = setup([new Response('ok', { status: 200 })]);
+    const controller = new AbortController();
+    await http('https://a.test/x', { signal: controller.signal });
+    const signal = calls[0]?.init?.signal as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    controller.abort();
+    expect(signal.aborted).toBe(true);
+  });
+
+  it('cancels the body of a retryable response before retrying', async () => {
+    const first = new Response('busy', { status: 503 });
+    let cancelled = false;
+    const original = first.body?.cancel.bind(first.body);
+    Object.defineProperty(first, 'body', {
+      value: {
+        cancel: async (reason?: unknown) => {
+          cancelled = true;
+          return original?.(reason);
+        },
+      },
+    });
+    const { http } = setup([first, new Response('ok', { status: 200 })]);
+    const res = await http('https://a.test/x');
+    expect(res.status).toBe(200);
+    expect(cancelled).toBe(true);
+  });
 });
