@@ -14,6 +14,8 @@ export const SPACESHIP_API = 'https://spaceship.dev/api';
 export const SPACESHIP_TLD_SOURCE = 'Spaceship API /v1/tlds/pricing';
 const BATCH = 20;
 const PAGE = 25;
+// Hard stop for the TLD list walk; a server that never reaches `total` must not loop forever.
+const MAX_PAGES = 200;
 
 interface Money {
   amount?: string;
@@ -230,7 +232,10 @@ export async function fetchSpaceshipTldPrices(
   checkedAt: string,
 ): Promise<PriceRow[]> {
   const rows: PriceRow[] = [];
-  for (let skip = 0; ; skip += PAGE) {
+  for (let page = 0, skip = 0; ; page++, skip += PAGE) {
+    if (page >= MAX_PAGES) {
+      throw new Error(`Spaceship TLD pricing exceeded ${MAX_PAGES} pages; refusing a partial list`);
+    }
     const url = `${SPACESHIP_API}/v1/tlds/pricing?take=${PAGE}&skip=${skip}`;
     const json = (await readJson(await http(url, { headers: headers(creds) }))) as {
       items?: unknown[];

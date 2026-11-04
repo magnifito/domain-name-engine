@@ -135,4 +135,13 @@ describe('Spaceship TLD prices', () => {
     const { http } = fakeHttp([[`${SPACESHIP_API}/v1/tlds/pricing`, () => Response.json(page)]]);
     await expect(fetchSpaceshipTldPrices(CREDS, http, '2026-11-04')).rejects.toThrow('total');
   });
+
+  it('stops after a page cap when the server never reaches total', async () => {
+    const page = { items: [{ tld: 'site', prices: tldPrices.items[0]?.prices }], total: 1_000_000 };
+    const { http, calls } = fakeHttp([
+      [`${SPACESHIP_API}/v1/tlds/pricing`, () => Response.json(page)],
+    ]);
+    await expect(fetchSpaceshipTldPrices(CREDS, http, '2026-11-04')).rejects.toThrow('pages');
+    expect(calls.length).toBeLessThanOrEqual(200);
+  });
 });
