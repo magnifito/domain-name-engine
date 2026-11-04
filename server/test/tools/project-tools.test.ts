@@ -223,6 +223,37 @@ describe('project tools', () => {
     );
   });
 
+  it('clears a trademark or competitor batch with empty results but not other kinds', async () => {
+    const { client } = await setup();
+    const slug = await created(client);
+    await callJson(client, 'project_add_names', {
+      slug,
+      names: [{ name: 'Fridgely', rulesetId: 'coined' }],
+    });
+    const mark = { source: 'uspto', mark: 'FRIDGELY' };
+    await callJson(client, 'project_add_checks', {
+      slug,
+      checks: [{ name: 'Fridgely', kind: 'trademark', results: [mark] }],
+    });
+    const cleared = await callJson(client, 'project_add_checks', {
+      slug,
+      checks: [
+        { name: 'Fridgely', kind: 'trademark', results: [] },
+        { name: 'Fridgely', kind: 'competitor', results: [] },
+      ],
+    });
+    expect(cleared.isError).toBe(false);
+    const got = await callJson(client, 'project_get', { slug });
+    const project = (got.data as { project: { checks: Record<string, { trademarks: unknown[] }> } })
+      .project;
+    expect(project.checks.fridgely?.trademarks).toEqual([]);
+    const rejected = await callJson(client, 'project_add_checks', {
+      slug,
+      checks: [{ name: 'Fridgely', kind: 'domain', results: [] }],
+    });
+    expect(rejected.isError).toBe(true);
+  });
+
   it('versions the brief', async () => {
     const { client } = await setup();
     const slug = await created(client);
