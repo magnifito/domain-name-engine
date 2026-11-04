@@ -254,6 +254,27 @@ describe('project tools', () => {
     expect(rejected.isError).toBe(true);
   });
 
+  it('rejects a single check result above 32 KiB', async () => {
+    const { client } = await setup();
+    const slug = await created(client);
+    await callJson(client, 'project_add_names', {
+      slug,
+      names: [{ name: 'Fridgely', rulesetId: 'coined' }],
+    });
+    const res = await callJson(client, 'project_add_checks', {
+      slug,
+      checks: [
+        {
+          name: 'Fridgely',
+          kind: 'trademark',
+          results: [{ source: 'uspto', blob: 'x'.repeat(40 * 1024) }],
+        },
+      ],
+    });
+    expect(res.isError).toBe(true);
+    expect(res.text).toMatch(/32 KiB/);
+  });
+
   it('versions the brief', async () => {
     const { client } = await setup();
     const slug = await created(client);

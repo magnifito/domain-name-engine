@@ -28,6 +28,7 @@ import {
 export const PROJECT_FILE = 'project.json';
 export const REPORT_FILE = 'report.md';
 const TITLE_MAX = 80;
+const MAX_RESULT_BYTES = 32 * 1024;
 
 export interface ProjectPaths {
   dir: string;
@@ -310,6 +311,13 @@ export class ProjectStore {
     return this.update(slug, (project) =>
       batches.map((batch) => {
         const entry = findName(project, batch.name);
+        for (const result of batch.results) {
+          if (Buffer.byteLength(JSON.stringify(result), 'utf8') > MAX_RESULT_BYTES) {
+            throw new StoreError(
+              `A ${batch.kind} result for "${batch.name}" is larger than 32 KiB; store a trimmed result.`,
+            );
+          }
+        }
         let checks = project.checks[entry.label];
         if (!checks) {
           checks = emptyChecks();
