@@ -1,7 +1,7 @@
 import { REPO_URL, VERSION } from '../../config.js';
 import type { HttpFetch } from '../../http/http.js';
 import { errorMessage } from '../../util/errors.js';
-import { type Checker, statusProbe, unknownProbe } from './checkers.js';
+import { type Checker, type Probe, statusProbe, unknownProbe } from './checkers.js';
 
 export const REDDIT_TOKEN_URL = 'https://www.reddit.com/api/v1/access_token';
 // Reddit asks API clients for a "<platform>:<app id>:<version>" User-Agent.
@@ -14,8 +14,8 @@ export function redditChecker(
 ): Checker {
   let token: { value: string; expiresAt: number } | undefined;
 
-  const getToken = async (): Promise<string> => {
-    if (token && token.expiresAt > now()) return token.value;
+  const getToken = async (force: boolean): Promise<string> => {
+    if (!force && token && token.expiresAt > now()) return token.value;
     const basic = Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64');
     const res = await http(REDDIT_TOKEN_URL, {
       method: 'POST',
@@ -36,10 +36,10 @@ export function redditChecker(
     return token.value;
   };
 
-  return async (handle) => {
+  const lookup = async (handle: string, force: boolean): Promise<Probe> => {
     let bearer: string;
     try {
-      bearer = await getToken();
+      bearer = await getToken(force);
     } catch (error) {
       return unknownProbe('reddit-api', errorMessage(error));
     }
@@ -50,6 +50,16 @@ export function redditChecker(
       'reddit-api',
       'No Reddit account has this name. Deleted accounts also return 404 and their names cannot be reused.',
     );
+  };
+
+  return async (handle) => {
+    const probe = await lookup(handle, false);
+    // A 401 can mean the cached token was revoked or expired early; fetch a fresh one once.
+    if (probe.status === 'unknown' && probe.reason === 'reddit-api returned HTTP 401') {
+      token = undefined;
+      return lookup(handle, true);
+    }
+    return probe;
   };
 }
 

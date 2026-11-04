@@ -94,3 +94,39 @@ describe('youtubeChecker', () => {
     expect(JSON.stringify(probe)).not.toContain(SECRET);
   });
 });
+
+describe('redditChecker token refresh', () => {
+  it('drops the cached token on 401 and retries once with a fresh one', async () => {
+    let tokens = 0;
+    const seenAuth: string[] = [];
+    const { http } = fakeHttp((url, init) => {
+      if (url === REDDIT_TOKEN_URL) {
+        tokens++;
+        return Response.json({ access_token: `bearer-${tokens}`, expires_in: 3600 });
+      }
+      const auth = ((init?.headers ?? {}) as Record<string, string>).authorization ?? '';
+      seenAuth.push(auth);
+      return auth === 'Bearer bearer-2'
+        ? Response.json({ name: 'acme' })
+        : new Response(null, { status: 401 });
+    });
+    const check = redditChecker(http, { clientId: 'id-1', clientSecret: SECRET }, () => 0);
+    expect(await check('acme')).toMatchObject({ status: 'taken' });
+    expect(tokens).toBe(2);
+    expect(seenAuth).toEqual(['Bearer bearer-1', 'Bearer bearer-2']);
+  });
+
+  it('gives up after one retry', async () => {
+    let tokens = 0;
+    const { http } = fakeHttp((url) => {
+      if (url === REDDIT_TOKEN_URL) {
+        tokens++;
+        return Response.json({ access_token: `bearer-${tokens}`, expires_in: 3600 });
+      }
+      return new Response(null, { status: 401 });
+    });
+    const probe = await redditChecker(http, { clientId: 'id-1', clientSecret: SECRET })('acme');
+    expect(probe).toMatchObject({ status: 'unknown', reason: 'reddit-api returned HTTP 401' });
+    expect(tokens).toBe(2);
+  });
+});
