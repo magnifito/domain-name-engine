@@ -104,12 +104,23 @@ describe('profileDomain', () => {
     expect(profile.reason).toContain('not retried or bypassed');
   });
 
-  it('reports no_site when the homepage is unreachable', async () => {
+  it('reports unknown, not no_site, when the homepage cannot be fetched, and does not cache it', async () => {
     const deps = await makeDeps({ homepage: { kind: 'error', reason: 'ENOTFOUND' } });
     expect(await profileDomain('acme.com', deps)).toMatchObject({
-      status: 'no_site',
-      confidence: 'medium',
+      status: 'unknown',
+      confidence: 'low',
       reason: 'Homepage unreachable: ENOTFOUND',
+    });
+    await profileDomain('acme.com', deps);
+    expect(deps.calls.filter((c) => c === 'http')).toHaveLength(2);
+  });
+
+  it('reports a blocked homepage target as unknown with the reason', async () => {
+    const reason = 'blocked: redirect to 127.0.0.1 resolves to a private or reserved address';
+    const deps = await makeDeps({ homepage: { kind: 'error', reason } });
+    expect(await profileDomain('acme.com', deps)).toMatchObject({
+      status: 'unknown',
+      reason: `Homepage unreachable: ${reason}`,
     });
   });
 

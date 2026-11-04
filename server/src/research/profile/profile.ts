@@ -136,17 +136,16 @@ function classify(
       reason: `Homepage returned HTTP ${homepage.httpStatus}.`,
     };
   }
-  if (registration.status === 'unknown') {
-    return {
-      status: 'unknown',
-      confidence: 'low',
-      reason: `${registration.reason ?? 'Registration lookup failed'}; homepage: ${homepage.reason}`,
-    };
-  }
+  // A failed fetch says nothing about whether a site exists (DNS, TLS, timeout, or a blocked
+  // target), so it is never reported as no_site and the result is not cached.
+  const unreachable = `Homepage unreachable: ${homepage.reason}`;
   return {
-    status: 'no_site',
-    confidence: 'medium',
-    reason: `Homepage unreachable: ${homepage.reason}`,
+    status: 'unknown',
+    confidence: 'low',
+    reason:
+      registration.status === 'unknown'
+        ? `${registration.reason ?? 'Registration lookup failed'}; homepage: ${homepage.reason}`
+        : unreachable,
   };
 }
 
