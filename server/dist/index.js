@@ -7870,8 +7870,13 @@ var StdioServerTransport = class {
 async function writeFileAtomic(path, data) {
 	await mkdir(dirname(path), { recursive: true });
 	const tmp = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-	await writeFile(tmp, data, "utf8");
-	await rename(tmp, path);
+	try {
+		await writeFile(tmp, data, "utf8");
+		await rename(tmp, path);
+	} catch (error) {
+		await rm(tmp, { force: true }).catch(() => void 0);
+		throw error;
+	}
 }
 // src/cache/cache.ts
 var DiskCache = class {
@@ -7942,12 +7947,17 @@ const TTL = {
 	trademarks: 7 * DAY,
 	registrarLive: HOUR
 };
+// src/util/errors.ts
+function errorMessage(error) {
+	return error instanceof Error ? error.message : String(error);
+}
 // src/domain/name.ts
 var ValidationError = class extends Error {
 	name = "ValidationError";
 };
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const TLD_PART = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const TLD_PART = LABEL;
+const isAscii = (text) => [...text].every((ch) => (ch.codePointAt(0) ?? 0) < 128);
 const MULTI_LABEL_TLDS = /* @__PURE__ */ new Set([
 	"co.uk",
 	"org.uk",
@@ -7988,13 +7998,13 @@ const MULTI_LABEL_TLDS = /* @__PURE__ */ new Set([
 ]);
 function normalizeLabel(input) {
 	const label = input.trim().toLowerCase();
-	if (!LABEL.test(label)) throw new ValidationError(`"${input}" is not a valid domain label: use 1-63 ASCII letters, digits, or inner hyphens (punycode for non-ASCII).`);
+	if (!isAscii(input) || !LABEL.test(label)) throw new ValidationError(`"${input}" is not a valid domain label: use 1-63 ASCII letters, digits, or inner hyphens (punycode for non-ASCII).`);
 	return label;
 }
 function normalizeTld(input) {
 	const tld = input.trim().toLowerCase().replace(/^\./, "");
 	const parts = tld.split(".");
-	if (parts.length > 3 || !parts.every((part) => TLD_PART.test(part))) throw new ValidationError(`"${input}" is not a valid TLD.`);
+	if (!isAscii(input) || parts.length > 3 || !parts.every((part) => TLD_PART.test(part))) throw new ValidationError(`"${input}" is not a valid TLD.`);
 	if (parts.length > 1 && !MULTI_LABEL_TLDS.has(tld)) throw new ValidationError(`"${input}" is not a known registry suffix; use a single-label TLD like "com" or a registry suffix like "co.uk".`);
 	return tld;
 }
@@ -8005,6 +8015,7 @@ function splitDomain(domain) {
 	const clean = domain.trim().toLowerCase().replace(/\.$/, "");
 	const dot = clean.indexOf(".");
 	if (dot <= 0) throw new ValidationError(`"${domain}" has no TLD.`);
+	if (clean[dot + 1] === ".") throw new ValidationError(`"${domain}" has an empty label.`);
 	return {
 		label: normalizeLabel(clean.slice(0, dot)),
 		tld: normalizeTld(clean.slice(dot + 1))
@@ -8041,28 +8052,55 @@ function whoisReason(result) {
 	if (result.kind === "error") return `WHOIS: ${result.reason}`;
 	return `WHOIS: response from ${result.server} not understood`;
 }
+async function safeRdap(domain, tld, deps) {
+	try {
+		return await deps.rdap(domain, tld);
+	} catch (error) {
+		return {
+			kind: "error",
+			reason: errorMessage(error)
+		};
+	}
+}
+async function safeWhois(domain, tld, deps) {
+	try {
+		return await deps.whois(domain, tld);
+	} catch (error) {
+		return {
+			kind: "error",
+			reason: errorMessage(error)
+		};
+	}
+}
+async function safeDns(domain, deps) {
+	try {
+		return await deps.dns(domain);
+	} catch {
+		return null;
+	}
+}
 async function resolveStatus(domain, tld, deps) {
 	const base = {
 		domain,
 		checkedAt: (deps.now?.() ?? /* @__PURE__ */ new Date()).toISOString()
 	};
-	const rdap = await deps.rdap(domain, tld);
+	const rdap = await safeRdap(domain, tld, deps);
 	if (rdap.kind === "registered") return {
 		...base,
 		status: "registered",
 		source: "rdap",
 		confidence: "high"
 	};
-	if (rdap.kind === "not_found") return notFound(base, "rdap", "high", await deps.dns(domain));
-	const whois = await deps.whois(domain, tld);
+	if (rdap.kind === "not_found") return notFound(base, "rdap", "high", await safeDns(domain, deps));
+	const whois = await safeWhois(domain, tld, deps);
 	if (whois.kind === "registered") return {
 		...base,
 		status: "registered",
 		source: "whois",
 		confidence: "high"
 	};
-	if (whois.kind === "not_found") return notFound(base, "whois", "medium", await deps.dns(domain));
-	if (await deps.dns(domain) === true) return {
+	if (whois.kind === "not_found") return notFound(base, "whois", "medium", await safeDns(domain, deps));
+	if (await safeDns(domain, deps) === true) return {
 		...base,
 		status: "registered",
 		source: "dns",
@@ -8080,7 +8118,10 @@ async function resolveStatus(domain, tld, deps) {
 async function checkDomain(domain, deps) {
 	const { tld } = splitDomain(domain);
 	const key = `domain:${domain}`;
-	const cached = await deps.cache.get(key);
+	let cached;
+	try {
+		cached = await deps.cache.get(key);
+	} catch {}
 	if (cached) return cached;
 	const result = await resolveStatus(domain, tld, deps);
 	try {
@@ -8089,6 +8130,7 @@ async function checkDomain(domain, deps) {
 	return result;
 }
 async function checkDomains(domains, deps, concurrency = 4) {
+	const workers = Number.isFinite(concurrency) ? Math.max(1, Math.floor(concurrency)) : 1;
 	const results = new Array(domains.length);
 	let next = 0;
 	const worker = async () => {
@@ -8097,7 +8139,7 @@ async function checkDomains(domains, deps, concurrency = 4) {
 			results[index] = await checkDomain(domains[index], deps);
 		}
 	};
-	await Promise.all(Array.from({ length: Math.min(concurrency, domains.length) }, worker));
+	await Promise.all(Array.from({ length: Math.min(workers, domains.length) }, worker));
 	return results;
 }
 // src/limiter/limiter.ts
@@ -8165,19 +8207,24 @@ function createHttp(opts) {
 		let lastError;
 		for (let attempt = 0; attempt < maxTries; attempt++) {
 			const isLast = attempt === maxTries - 1;
+			let waitMs;
 			try {
+				const timeout = AbortSignal.timeout(timeoutMs);
+				const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
 				const res = await opts.limiter.schedule(host, () => fetchImpl(url, {
 					...init,
 					headers,
-					signal: AbortSignal.timeout(timeoutMs)
+					signal
 				}));
 				if (!shouldRetry(res.status) || isLast) return res;
-				await sleepFn(retryDelayMs(res, attempt, baseDelayMs));
+				waitMs = retryDelayMs(res, attempt, baseDelayMs);
+				await res.body?.cancel().catch(() => void 0);
 			} catch (error) {
 				lastError = error;
-				if (isLast) break;
-				await sleepFn(retryDelayMs(void 0, attempt, baseDelayMs));
+				if (isLast || init.signal?.aborted) break;
+				waitMs = retryDelayMs(void 0, attempt, baseDelayMs);
 			}
+			await sleepFn(waitMs);
 		}
 		throw new HttpError(`Request to ${host} failed after ${maxTries} tries`, { cause: lastError });
 	};
@@ -9178,9 +9225,17 @@ async function call(http, creds, command, params) {
 const PRICE_LIST_TTL = 864e5;
 function createNamecheapClient(creds, deps) {
 	const now = deps.now ?? (() => /* @__PURE__ */ new Date());
-	async function allPrices(action) {
+	function allPrices(action, memo) {
+		let pending = memo.get(action);
+		if (!pending) {
+			pending = loadPrices(action);
+			memo.set(action, pending);
+		}
+		return pending;
+	}
+	async function loadPrices(action) {
 		const key = `namecheap-prices:${action}`;
-		const cached = await deps.cache.get(key);
+		const cached = await deps.cache.get(key).catch(() => void 0);
 		if (cached !== void 0) return cached;
 		const prices = parseNamecheapPricing(await call(deps.http, creds, "namecheap.users.getPricing", {
 			ProductType: "DOMAIN",
@@ -9190,13 +9245,14 @@ function createNamecheapClient(creds, deps) {
 		await deps.cache.set(key, prices, PRICE_LIST_TTL).catch(() => void 0);
 		return prices;
 	}
-	async function tldPrice(tld, action) {
-		return (await allPrices(action)).find((p) => p.product === tld) ?? null;
+	async function tldPrice(tld, action, memo) {
+		return (await allPrices(action, memo)).find((p) => p.product === tld) ?? null;
 	}
 	return {
 		id: "namecheap",
 		async quote(domains) {
 			const out = [];
+			const memo = /* @__PURE__ */ new Map();
 			for (const batch of chunk(domains, BATCH$1)) {
 				const checks = parseNamecheapCheck(await call(deps.http, creds, "namecheap.domains.check", { DomainList: batch.join(",") }));
 				const checkedAt = now().toISOString();
@@ -9211,8 +9267,8 @@ function createNamecheapClient(creds, deps) {
 						continue;
 					}
 					const tld = domain.slice(domain.indexOf(".") + 1);
-					const register = await tldPrice(tld, "REGISTER");
-					const renew = check.premium ? null : await tldPrice(tld, "RENEW");
+					const register = await tldPrice(tld, "REGISTER", memo);
+					const renew = check.premium ? null : await tldPrice(tld, "RENEW", memo);
 					const currency = register?.currency ?? renew?.currency ?? null;
 					out.push({
 						registrar: "namecheap",
@@ -9229,10 +9285,6 @@ function createNamecheapClient(creds, deps) {
 			return out;
 		}
 	};
-}
-// src/util/errors.ts
-function errorMessage(error) {
-	return error instanceof Error ? error.message : String(error);
 }
 // src/registrars/quote.ts
 const NO_KEYS_NOTE = "No registrar API keys are set, so these are bundled table prices only. Availability comes from check_domains; premium status is unknown.";
@@ -9486,6 +9538,7 @@ function createRegistrarRuntime(deps) {
 const IANA_RDAP_BOOTSTRAP = "https://data.iana.org/rdap/dns.json";
 const BOOTSTRAP_CACHE_KEY = "rdap:bootstrap";
 function parseBootstrap(file) {
+	if (!file || !Array.isArray(file.services)) throw new Error("IANA RDAP bootstrap file is malformed");
 	const servers = {};
 	for (const [tlds, urls] of file.services) for (const tld of tlds) servers[tld.toLowerCase()] = urls;
 	return servers;
@@ -9502,7 +9555,8 @@ async function loadRdapServers(http, cache) {
 	return servers;
 }
 function rdapBaseFor(servers, tld) {
-	const candidates = [tld, tld.split(".").at(-1) ?? tld];
+	const lower = tld.toLowerCase();
+	const candidates = [lower, lower.split(".").at(-1) ?? lower];
 	for (const candidate of candidates) {
 		const urls = servers[candidate];
 		if (urls && urls.length > 0) return urls.find((u) => u.startsWith("https://")) ?? urls[0];
@@ -9520,7 +9574,7 @@ async function rdapLookup(domain, tld, deps) {
 	}
 	const base = rdapBaseFor(servers, tld);
 	if (!base) return { kind: "no_server" };
-	const url = new URL(`domain/${domain}`, base.endsWith("/") ? base : `${base}/`).toString();
+	const url = new URL(`domain/${encodeURIComponent(domain)}`, base.endsWith("/") ? base : `${base}/`).toString();
 	try {
 		const res = await deps.http(url, { headers: { accept: "application/rdap+json" } });
 		if (res.status === 404) return { kind: "not_found" };
@@ -9541,16 +9595,16 @@ async function rdapLookup(domain, tld, deps) {
 }
 // src/sources/whois.ts
 const IANA_WHOIS = "whois.iana.org";
+const LINE_START = String.raw`^[ \t%#>*]*`;
 const NOT_FOUND_PATTERNS = [
-	/no match for/i,
-	/^\s*not found/im,
-	/^%+\s*not found/im,
-	/no data found/i,
-	/no entries found/i,
-	/domain not found/i,
-	/no object found/i,
-	/the queried object does not exist/i,
-	/is available for registration/i,
+	new RegExp(`${LINE_START}no match for`, "im"),
+	new RegExp(`${LINE_START}not found`, "im"),
+	new RegExp(`${LINE_START}no data found`, "im"),
+	new RegExp(`${LINE_START}no entries found`, "im"),
+	new RegExp(`${LINE_START}domain not found`, "im"),
+	new RegExp(`${LINE_START}no object found`, "im"),
+	new RegExp(`${LINE_START}the queried object does not exist`, "im"),
+	/^[ \t%#>*]*[^\n:]{0,100}\bis available for registration/im,
 	/^\s*status:\s*(free|available)\s*$/im
 ];
 const REGISTERED_PATTERNS = [
@@ -11651,7 +11705,22 @@ async function attempt(path, parse) {
 }
 /** Reads a JSON file; if it does not parse or validate, reads `<path>.bak` and says so. */
 async function readJsonWithBackup(path, parse) {
-	const main = await attempt(path, parse);
+	let main;
+	try {
+		main = await attempt(path, parse);
+	} catch (error) {
+		if (!isNotFound(error)) throw error;
+		const backup = await attempt(backupPath(path), parse).catch((backupError) => {
+			if (isNotFound(backupError)) throw error;
+			throw backupError;
+		});
+		if (!backup.ok) throw error;
+		return {
+			value: backup.value,
+			recoveredFromBackup: true,
+			problem: `${path} is missing`
+		};
+	}
 	if (main.ok) return {
 		value: main.value,
 		recoveredFromBackup: false
@@ -11694,7 +11763,7 @@ async function writeJsonWithBackup(path, value, parse) {
 		if (accepts(current, parse)) await writeFileAtomic(backupPath(path), current);
 		else {
 			const stamp = (/* @__PURE__ */ new Date()).toISOString().replaceAll(":", "-");
-			await rename(path, `${path}.corrupt-${stamp}`);
+			await rename(path, `${path}.corrupt-${stamp}-${randomBytes(3).toString("hex")}`);
 		}
 	}
 	await writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`);

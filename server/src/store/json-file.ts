@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { readFile, rename } from 'node:fs/promises';
 import { writeFileAtomic } from '../fs/atomic.js';
 import { errorMessage } from '../util/errors.js';
@@ -33,7 +34,20 @@ export async function readJsonWithBackup<T>(
   path: string,
   parse: (raw: unknown) => T,
 ): Promise<JsonRead<T>> {
-  const main = await attempt(path, parse);
+  let main: Attempt<T>;
+  try {
+    main = await attempt(path, parse);
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+    // The main file vanished (for example a corrupt file was moved aside and the rewrite failed);
+    // a valid backup must still be served instead of reporting "not found".
+    const backup = await attempt(backupPath(path), parse).catch((backupError: unknown) => {
+      if (isNotFound(backupError)) throw error;
+      throw backupError;
+    });
+    if (!backup.ok) throw error;
+    return { value: backup.value, recoveredFromBackup: true, problem: `${path} is missing` };
+  }
   if (main.ok) return { value: main.value, recoveredFromBackup: false };
   let backup: Attempt<T>;
   try {
@@ -83,7 +97,7 @@ export async function writeJsonWithBackup(
     } else {
       // Keep the invalid file for manual recovery instead of overwriting it.
       const stamp = new Date().toISOString().replaceAll(':', '-');
-      await rename(path, `${path}.corrupt-${stamp}`);
+      await rename(path, `${path}.corrupt-${stamp}-${randomBytes(3).toString('hex')}`);
     }
   }
   await writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`);

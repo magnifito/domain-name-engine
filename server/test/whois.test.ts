@@ -56,6 +56,10 @@ describe('parseAvailability', () => {
     ['No Data Found', 'not_found'],
     [REGISTERED, 'registered'],
     ['Rate limit exceeded', 'unknown'],
+    ['% No match for "X.COM"', 'not_found'],
+    ['  acme.test is available for registration', 'not_found'],
+    [`${REGISTERED}\nTerms: results with no match for your query may be inexact.`, 'registered'],
+    [`${REGISTERED}\nNotes: the domain not found in other registries is unaffected.`, 'registered'],
   ])('classifies %j as %s', (text, expected) => {
     expect(parseAvailability(text)).toBe(expected);
   });

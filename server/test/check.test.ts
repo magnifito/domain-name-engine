@@ -87,6 +87,30 @@ describe('checkDomain', () => {
     expect(result.reason).toBe('RDAP: RDAP HTTP 400; WHOIS: timed out');
   });
 
+  it('explains the conflicting-signal and dns-only rows', async () => {
+    const conflict = await checkDomain(
+      'acme.test',
+      await makeDeps({ rdap: { kind: 'not_found' }, dns: true }),
+    );
+    expect(conflict.reason).toContain('DNS has nameservers');
+    const dnsOnly = await checkDomain(
+      'acme.test',
+      await makeDeps({ rdap: { kind: 'no_server' }, whois: whoisOf('unknown'), dns: true }),
+    );
+    expect(dnsOnly.reason).toContain('RDAP and WHOIS gave no usable answer');
+  });
+
+  it('does not query whois or dns when rdap answers registered', async () => {
+    const deps = await makeDeps({ rdap: { kind: 'registered', record: {} } });
+    deps.whois = async () => {
+      throw new Error('whois must not run');
+    };
+    deps.dns = async () => {
+      throw new Error('dns must not run');
+    };
+    expect((await checkDomain('acme.test', deps)).source).toBe('rdap');
+  });
+
   it('serves registered results from cache', async () => {
     const deps = await makeDeps({ rdap: { kind: 'registered', record: {} } });
     await checkDomain('acme.test', deps);
@@ -107,6 +131,52 @@ describe('checkDomains', () => {
     const deps = await makeDeps({ rdap: { kind: 'not_found' }, dns: false });
     const results = await checkDomains(['a.test', 'b.test', 'c.test'], deps, 2);
     expect(results.map((r) => r.domain)).toEqual(['a.test', 'b.test', 'c.test']);
+  });
+});
+
+describe('resilience', () => {
+  it('treats concurrency <= 0 as 1 instead of returning empty rows', async () => {
+    const deps = await makeDeps({ rdap: { kind: 'not_found' }, dns: false });
+    for (const concurrency of [0, -3, Number.NaN]) {
+      const results = await checkDomains(['a.test', 'b.test'], deps, concurrency);
+      expect(results.map((r) => r?.domain)).toEqual(['a.test', 'b.test']);
+    }
+  });
+
+  it('turns a rejecting rdap dep into an unknown row without failing the batch', async () => {
+    const deps = await makeDeps({ rdap: { kind: 'not_found' }, dns: false });
+    deps.rdap = async (domain) => {
+      if (domain === 'b.test') throw new Error('boom');
+      return { kind: 'not_found' };
+    };
+    const results = await checkDomains(['a.test', 'b.test', 'c.test'], deps);
+    expect(results.map((r) => r.status)).toEqual([
+      'likely_available',
+      'unknown',
+      'likely_available',
+    ]);
+    expect(results[1]?.reason).toContain('boom');
+  });
+
+  it('survives rejecting whois and dns deps', async () => {
+    const deps = await makeDeps({ rdap: { kind: 'no_server' } });
+    deps.whois = async () => {
+      throw new Error('whois down');
+    };
+    deps.dns = async () => {
+      throw new Error('dns down');
+    };
+    const row = await checkDomain('a.test', deps);
+    expect(row.status).toBe('unknown');
+    expect(row.reason).toContain('whois down');
+  });
+
+  it('treats a throwing cache.get as a miss', async () => {
+    const deps = await makeDeps({ rdap: { kind: 'not_found' }, dns: false });
+    deps.cache.get = async () => {
+      throw new Error('EIO');
+    };
+    expect((await checkDomain('a.test', deps)).status).toBe('likely_available');
   });
 });
 

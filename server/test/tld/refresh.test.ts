@@ -168,4 +168,31 @@ describe('runRefresh', () => {
     );
     expect(next.rows.filter((r) => r.registrar === 'cloudflare')).toHaveLength(1);
   });
+
+  it('refuses to promote a partial-coverage registrar to full on a tiny result', async () => {
+    const current = testTables().registrars; // spaceship is partial
+    const { lines, log } = logger();
+    const next = await runRefresh(
+      current,
+      [{ registrar: 'spaceship', run: async () => [fresh] }],
+      [],
+      log,
+    );
+    expect(next).toEqual(mergeTable(current, []));
+    expect(next.registrars.spaceship.coverage).toBe('partial');
+    expect(lines.join('\n')).toMatch(/spaceship: failed.*below the minimum/);
+  });
+
+  it('promotes a partial-coverage registrar once the result meets the minimum', async () => {
+    const current = testTables().registrars;
+    const { log } = logger();
+    const next = await runRefresh(
+      current,
+      [{ registrar: 'spaceship', run: async () => [fresh] }],
+      [],
+      log,
+      1,
+    );
+    expect(next.registrars.spaceship.coverage).toBe('full');
+  });
 });

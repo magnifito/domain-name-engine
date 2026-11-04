@@ -52,17 +52,24 @@ export function createHttp(opts: HttpOptions): HttpFetch {
 
     for (let attempt = 0; attempt < maxTries; attempt++) {
       const isLast = attempt === maxTries - 1;
+      let waitMs: number;
       try {
+        const timeout = AbortSignal.timeout(timeoutMs);
+        const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
         const res = await opts.limiter.schedule(host, () =>
-          fetchImpl(url, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) }),
+          fetchImpl(url, { ...init, headers, signal }),
         );
         if (!shouldRetry(res.status) || isLast) return res;
-        await sleepFn(retryDelayMs(res, attempt, baseDelayMs));
+        waitMs = retryDelayMs(res, attempt, baseDelayMs);
+        // Release the connection held by the discarded response before retrying.
+        await res.body?.cancel().catch(() => undefined);
       } catch (error) {
         lastError = error;
-        if (isLast) break;
-        await sleepFn(retryDelayMs(undefined, attempt, baseDelayMs));
+        // A caller-initiated abort is final; do not retry it.
+        if (isLast || init.signal?.aborted) break;
+        waitMs = retryDelayMs(undefined, attempt, baseDelayMs);
       }
+      await sleepFn(waitMs);
     }
     throw new HttpError(`Request to ${host} failed after ${maxTries} tries`, {
       cause: lastError,

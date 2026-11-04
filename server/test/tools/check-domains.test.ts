@@ -75,4 +75,52 @@ describe('check_domains tool', () => {
     expect(res.isError).toBe(true);
     expect(res.text).toContain('limit is 200');
   });
+
+  it('accepts exactly 200 domains', async () => {
+    const rt = fakeRuntime();
+    const client = await connectClient(rt);
+    const names = Array.from({ length: 50 }, (_, i) => `name${i}`);
+    const res = await callJson(client, 'check_domains', {
+      names,
+      tlds: ['com', 'io', 'dev', 'app'],
+    });
+    expect(res.isError).toBe(false);
+    expect(rt.seen[0]).toHaveLength(200);
+  });
+
+  it('counts the cap after de-duplication', async () => {
+    const rt = fakeRuntime();
+    const client = await connectClient(rt);
+    const names = Array.from({ length: 100 }, (_, i) => (i % 2 === 0 ? 'acme' : 'ACME'));
+    const tlds = ['com', 'io', 'dev', 'app', 'net', 'org'];
+    const res = await callJson(client, 'check_domains', { names, tlds });
+    expect(res.isError).toBe(false);
+    expect(rt.seen[0]).toHaveLength(6);
+  });
+
+  it('returns a tool error for an invalid TLD', async () => {
+    const client = await connectClient(fakeRuntime());
+    const res = await callJson(client, 'check_domains', { names: ['acme'], tlds: ['c_m'] });
+    expect(res.isError).toBe(true);
+    expect(res.text).toContain('is not a valid TLD');
+  });
+
+  it('accepts a multi-label registry suffix', async () => {
+    const rt = fakeRuntime();
+    const client = await connectClient(rt);
+    const res = await callJson(client, 'check_domains', { names: ['acme'], tlds: ['co.uk'] });
+    expect(res.isError).toBe(false);
+    expect(rt.seen[0]).toEqual(['acme.co.uk']);
+  });
+
+  it('surfaces an unexpected runtime rejection as a tool error', async () => {
+    const rt = fakeRuntime();
+    rt.checkDomains = async () => {
+      throw new Error('disk exploded');
+    };
+    const client = await connectClient(rt);
+    const res = await callJson(client, 'check_domains', { names: ['acme'], tlds: ['com'] });
+    expect(res.isError).toBe(true);
+    expect(res.text).toContain('disk exploded');
+  });
 });

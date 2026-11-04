@@ -77,4 +77,72 @@ describe('createHttp', () => {
     const res = new Response('', { status: 429, headers: { 'retry-after': '9999' } });
     expect(retryDelayMs(res, 0, 100)).toBe(60_000);
   });
+
+  it('honors a caller-supplied abort signal', async () => {
+    const { http, calls } = setup([new Response('ok', { status: 200 })]);
+    const controller = new AbortController();
+    await http('https://a.test/x', { signal: controller.signal });
+    const signal = calls[0]?.init?.signal as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    controller.abort();
+    expect(signal.aborted).toBe(true);
+  });
+
+  it('cancels the body of a retryable response before retrying', async () => {
+    const first = new Response('busy', { status: 503 });
+    let cancelled = false;
+    const original = first.body?.cancel.bind(first.body);
+    Object.defineProperty(first, 'body', {
+      value: {
+        cancel: async (reason?: unknown) => {
+          cancelled = true;
+          return original?.(reason);
+        },
+      },
+    });
+    const { http } = setup([first, new Response('ok', { status: 200 })]);
+    const res = await http('https://a.test/x');
+    expect(res.status).toBe(200);
+    expect(cancelled).toBe(true);
+  });
+
+  it('keeps a caller-supplied user agent', async () => {
+    const { http, calls } = setup([new Response('ok', { status: 200 })]);
+    await http('https://a.test/x', { headers: { 'user-agent': 'custom/1' } });
+    expect(new Headers(calls[0]?.init?.headers).get('user-agent')).toBe('custom/1');
+  });
+
+  it('waits with exponential backoff after network errors', async () => {
+    const { http, calls, waits } = setup([
+      new Error('reset'),
+      new Error('reset'),
+      new Response('ok', { status: 200 }),
+    ]);
+    const res = await http('https://a.test/x');
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(3);
+    expect(waits).toEqual([100, 200]);
+  });
+
+  it('honors an HTTP-date Retry-After', () => {
+    const when = new Date(Date.now() + 5000).toUTCString();
+    const res = new Response('', { status: 429, headers: { 'retry-after': when } });
+    const delay = retryDelayMs(res, 0, 100);
+    expect(delay).toBeGreaterThan(2000);
+    expect(delay).toBeLessThanOrEqual(5000);
+  });
+
+  it('aborts a request that exceeds the timeout', async () => {
+    const hanging = (async (_url: string, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      })) as typeof fetch;
+    const http = createHttp({
+      limiter: new HostLimiter({ minIntervalMs: 0 }),
+      fetchImpl: hanging,
+      timeoutMs: 20,
+      maxTries: 1,
+    });
+    await expect(http('https://a.test/x')).rejects.toBeInstanceOf(HttpError);
+  });
 });

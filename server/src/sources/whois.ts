@@ -13,16 +13,18 @@ export type WhoisResult =
 
 const IANA_WHOIS = 'whois.iana.org';
 
+// Not-found phrases are anchored to the start of a line (after optional comment markers) so the
+// same words inside a registered record's disclaimer or free text cannot flip the verdict.
+const LINE_START = String.raw`^[ \t%#>*]*`;
 const NOT_FOUND_PATTERNS = [
-  /no match for/i,
-  /^\s*not found/im,
-  /^%+\s*not found/im,
-  /no data found/i,
-  /no entries found/i,
-  /domain not found/i,
-  /no object found/i,
-  /the queried object does not exist/i,
-  /is available for registration/i,
+  new RegExp(`${LINE_START}no match for`, 'im'),
+  new RegExp(`${LINE_START}not found`, 'im'),
+  new RegExp(`${LINE_START}no data found`, 'im'),
+  new RegExp(`${LINE_START}no entries found`, 'im'),
+  new RegExp(`${LINE_START}domain not found`, 'im'),
+  new RegExp(`${LINE_START}no object found`, 'im'),
+  new RegExp(`${LINE_START}the queried object does not exist`, 'im'),
+  /^[ \t%#>*]*[^\n:]{0,100}\bis available for registration/im,
   /^\s*status:\s*(free|available)\s*$/im,
 ];
 

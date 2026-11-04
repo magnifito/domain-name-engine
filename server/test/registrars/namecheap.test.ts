@@ -121,6 +121,28 @@ describe('Namecheap client', () => {
     for (const c of pricing) expect(c.url).not.toContain('ProductName');
   });
 
+  it('fetches each price list once per quote even when the cache cannot be written', async () => {
+    const domains = Array.from({ length: 5 }, (_, i) => `name${i}.site`);
+    const checkXml = `<?xml version="1.0"?><ApiResponse xmlns="http://api.namecheap.com/xml.response" Status="OK"><Errors /><CommandResponse Type="namecheap.domains.check">${domains
+      .map(
+        (d) =>
+          `<DomainCheckResult Domain="${d}" Available="true" ErrorNo="0" Description="" IsPremiumName="false" PremiumRegistrationPrice="0" PremiumRenewalPrice="0" />`,
+      )
+      .join('')}</CommandResponse></ApiResponse>`;
+    const fake = fakeHttp([
+      [CHECK, () => new Response(checkXml)],
+      [`${PRICING}&ActionName=REGISTER`, xml('namecheap-pricing-site-register.xml')],
+      [`${PRICING}&ActionName=RENEW`, xml('namecheap-pricing-site-renew.xml')],
+    ]);
+    const cache = new DiskCache(await mkdtemp(join(tmpdir(), 'dne-nc-')));
+    cache.set = async () => {
+      throw new Error('EROFS');
+    };
+    const client = createNamecheapClient(CREDS, { http: fake.http, cache, now: () => FIXED_NOW });
+    await client.quote(domains);
+    expect(fake.calls.filter((c) => c.url.includes('getPricing'))).toHaveLength(2);
+  });
+
   it('throws on an API error without the key in the message', async () => {
     const { client } = await setup([[NAMECHEAP_API, xml('namecheap-error.xml')]]);
     const error = await client.quote(['zentrova.site']).catch((e: Error) => e);
