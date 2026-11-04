@@ -12,12 +12,12 @@ jobs:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           package_json_file: server/package.json
       # Tooling (pnpm 11) needs Node 22.13+; the shipped bundle still targets Node 20 (checked below).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -30,7 +30,7 @@ jobs:
       - name: Fail if the committed bundle is stale
         run: |
           test -z "$(git status --porcelain -- dist)" || { git status --porcelain -- dist; echo "dist is stale: run pnpm build and commit"; exit 1; }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - name: Smoke test the bundle on Node 20
