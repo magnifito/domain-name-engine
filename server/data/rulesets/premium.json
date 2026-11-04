@@ -1,0 +1,16 @@
+{
+  "id": "premium",
+  "name": "Premium",
+  "description": "Short and easy to say, built on Latin or Greek roots. Requires the exact .com.",
+  "examples": ["Nova", "Aeris", "Lumen", "Veritas"],
+  "styles": [{ "style": "invented", "weight": 0.6 }, { "style": "metaphor", "weight": 0.4 }],
+  "length": { "min": 4, "max": 8 },
+  "filters": {
+    "hyphens": false,
+    "numbers": false,
+    "bannedPairs": ["qx", "xq", "jq", "qj", "vq", "wq", "zx", "xz"],
+    "bannedWords": []
+  },
+  "tlds": { "order": ["com"], "countryFirst": false, "com": "must", "affixes": [] },
+  "weights": { "length": 1, "say": 1, "spell": 1, "meaning": 0.6, "uniqueness": 0.7, "price": 0.2 }
+}

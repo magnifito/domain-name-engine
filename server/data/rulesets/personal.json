@@ -1,0 +1,23 @@
+{
+  "id": "personal",
+  "name": "Personal brand",
+  "description": "Forms of the person's name: first name, first plus last, or initials plus role.",
+  "examples": ["JaneDoe", "JDoe", "JaneDoeDesign", "JDStudio"],
+  "styles": [{ "style": "person-name", "weight": 1 }],
+  "length": { "min": 4, "max": 20 },
+  "filters": { "hyphens": true, "numbers": false, "bannedPairs": [], "bannedWords": [] },
+  "tlds": {
+    "order": ["com", "me", "io", "name"],
+    "countryFirst": false,
+    "com": "nice",
+    "affixes": ["by-", "-studio", "-design", "-dev"]
+  },
+  "weights": {
+    "length": 0.6,
+    "say": 0.8,
+    "spell": 1,
+    "meaning": 1,
+    "uniqueness": 0.3,
+    "price": 0.4
+  }
+}

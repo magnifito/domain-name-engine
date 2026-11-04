@@ -1,0 +1,27 @@
+{
+  "id": "descriptive",
+  "name": "Descriptive",
+  "description": "Says what the product does, 8-15 letters. Wants .com; falls back to an affix such as get- or -app when the exact .com is taken.",
+  "examples": ["Booking", "Hotels", "SiteBuilder", "PhotoPrint"],
+  "styles": [
+    { "style": "descriptive", "weight": 0.7 },
+    { "style": "compound", "weight": 0.2 },
+    { "style": "affix", "weight": 0.1 }
+  ],
+  "length": { "min": 8, "max": 15 },
+  "filters": { "hyphens": false, "numbers": false, "bannedPairs": [], "bannedWords": [] },
+  "tlds": {
+    "order": ["com", "co", "net"],
+    "countryFirst": false,
+    "com": "must",
+    "affixes": ["get-", "try-", "use-", "-app", "-hq"]
+  },
+  "weights": {
+    "length": 0.4,
+    "say": 0.8,
+    "spell": 1,
+    "meaning": 1,
+    "uniqueness": 0.5,
+    "price": 0.4
+  }
+}

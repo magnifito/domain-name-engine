@@ -1,0 +1,23 @@
+{
+  "id": "compound",
+  "name": "Compound",
+  "description": "Two real words joined into one, 6-12 letters.",
+  "examples": ["Facebook", "Snapchat", "Dropbox", "Mailchimp"],
+  "styles": [{ "style": "compound", "weight": 1 }],
+  "length": { "min": 6, "max": 12 },
+  "filters": { "hyphens": false, "numbers": false, "bannedPairs": [], "bannedWords": [] },
+  "tlds": {
+    "order": ["com", "io", "co", "app"],
+    "countryFirst": false,
+    "com": "nice",
+    "affixes": ["get-", "-hq"]
+  },
+  "weights": {
+    "length": 0.6,
+    "say": 1,
+    "spell": 1,
+    "meaning": 0.8,
+    "uniqueness": 0.7,
+    "price": 0.4
+  }
+}
