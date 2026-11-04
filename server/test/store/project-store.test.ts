@@ -350,6 +350,27 @@ describe('ProjectStore.addChecks', () => {
 });
 
 describe('ProjectStore notes, shortlist, and brief versions', () => {
+  it('replaces an earlier language note for the same language', async () => {
+    const { store, slug } = await withProject();
+    await store.addNames(slug, [{ name: 'Fridgely', rulesetId: 'coined' }], weightsOf('coined'));
+    const note = (language: string, text: string, severity: 'low' | 'high' = 'low') => ({
+      name: 'Fridgely',
+      kind: 'language',
+      language,
+      text,
+      severity,
+    });
+    await store.addNotes(slug, [note('de', 'first'), note('en', 'fine')]);
+    await store.addNotes(slug, [note('de', 'second', 'high'), { name: 'Fridgely', text: 'a' }]);
+    await store.addNotes(slug, [{ name: 'Fridgely', text: 'a' }]);
+    const notes = (await store.get(slug)).project.names[0]?.notes ?? [];
+    expect(notes.filter((n) => n.kind === 'language').map((n) => [n.language, n.text])).toEqual([
+      ['en', 'fine'],
+      ['de', 'second'],
+    ]);
+    expect(notes.filter((n) => n.kind === 'general')).toHaveLength(2);
+  });
+
   it('adds notes with defaults', async () => {
     const { store, slug } = await withProject();
     await store.addNames(slug, [{ name: 'Fridgely', rulesetId: 'coined' }], weightsOf('coined'));

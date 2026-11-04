@@ -361,8 +361,16 @@ export class ProjectStore {
   addNotes(slug: string, notes: NewNote[]): Promise<Mutation<{ added: number }>> {
     return this.update(slug, (project, at) => {
       for (const note of notes) {
-        findName(project, note.name).notes.push({
-          kind: note.kind ?? 'general',
+        const entry = findName(project, note.name);
+        const kind = note.kind ?? 'general';
+        if (kind === 'language' && note.language !== undefined) {
+          // A language check is re-run per language; the newest note for a language replaces the old one.
+          entry.notes = entry.notes.filter(
+            (n) => !(n.kind === 'language' && n.language === note.language),
+          );
+        }
+        entry.notes.push({
+          kind,
           text: note.text,
           ...(note.language === undefined ? {} : { language: note.language }),
           severity: note.severity ?? 'low',
