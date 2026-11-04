@@ -29,10 +29,10 @@ describe('project schema', () => {
     expect(parseProject(await minimalProject()).slug).toBe('fridgeplan');
   });
 
-  it('rejects another schemaVersion with a clear message', async () => {
+  it('rejects a newer schemaVersion with an upgrade message', async () => {
     const raw = { ...(await minimalProject()), schemaVersion: 2 };
     expect(() => parseProject(raw)).toThrow(
-      'schemaVersion is 2; this engine reads schemaVersion 1.',
+      'was written by a newer engine (schemaVersion 2); upgrade the plugin.',
     );
     const { schemaVersion: _v, ...unversioned } = await minimalProject();
     expect(() => parseProject(unversioned)).toThrow('schemaVersion is undefined');

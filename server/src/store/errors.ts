@@ -5,6 +5,11 @@ export class StoreError extends Error {
   override name = 'StoreError';
 }
 
+/** A stored file was written by a newer engine; it must never be read from a backup or overwritten. */
+export class NewerVersionError extends StoreError {
+  override name = 'NewerVersionError';
+}
+
 /** Formats zod issues as "path: message" pairs on one line. */
 export function zodMessage(error: z.ZodError): string {
   return error.issues

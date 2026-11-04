@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -100,14 +100,36 @@ describe('ProjectStore.get and list', () => {
     JSON.parse(await readFile(`${paths.projectFile}.bak`, 'utf8'));
   });
 
-  it('refuses a project with another schemaVersion', async () => {
+  it('refuses a project written by a newer engine, keeps the file, and ignores the backup', async () => {
     const { store, slug } = await withProject();
+    await store.addNames(slug, [{ name: 'Alpha', rulesetId: 'coined' }], weightsOf('coined'));
+    await store.addNames(slug, [{ name: 'Beta', rulesetId: 'coined' }], weightsOf('coined'));
     const { paths } = await store.get(slug);
     const raw = JSON.parse(await readFile(paths.projectFile, 'utf8'));
-    await writeFile(paths.projectFile, JSON.stringify({ ...raw, schemaVersion: 2 }));
-    await expect(store.get(slug)).rejects.toThrow(
-      /schemaVersion is 2; this engine reads schemaVersion 1\./,
-    );
+    const newer = JSON.stringify({ ...raw, schemaVersion: 2 });
+    await writeFile(paths.projectFile, newer);
+    await expect(store.get(slug)).rejects.toThrow(/written by a newer engine \(schemaVersion 2\)/);
+    await expect(store.addNotes(slug, [])).rejects.toThrow(/newer engine/);
+    await expect(
+      store.addNames(slug, [{ name: 'Gamma', rulesetId: 'coined' }], weightsOf('coined')),
+    ).rejects.toThrow(/newer engine/);
+    expect(await readFile(paths.projectFile, 'utf8')).toBe(newer);
+  });
+
+  it('preserves a corrupt project.json before a write repairs it from the backup', async () => {
+    const { store, slug } = await withProject();
+    await store.addNames(slug, [{ name: 'Alpha', rulesetId: 'coined' }], weightsOf('coined'));
+    await store.addNames(slug, [{ name: 'Beta', rulesetId: 'coined' }], weightsOf('coined'));
+    const { paths } = await store.get(slug);
+    await writeFile(paths.projectFile, '{ broken');
+    const recovered = await store.get(slug);
+    expect(recovered.recoveredFromBackup).toBe(true);
+    await store.addNotes(slug, [{ name: 'Alpha', text: 'ok' }]);
+    const files = (await readdir(paths.dir)).filter((f) => f.startsWith('project.json.corrupt-'));
+    expect(files).toHaveLength(1);
+    expect(files[0]).not.toContain(':');
+    expect(await readFile(join(paths.dir, files[0] ?? ''), 'utf8')).toBe('{ broken');
+    expect((await store.get(slug)).recoveredFromBackup).toBe(false);
   });
 
   it('lists projects newest first and reports unreadable ones', async () => {

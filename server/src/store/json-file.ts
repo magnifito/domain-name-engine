@@ -1,7 +1,7 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, rename } from 'node:fs/promises';
 import { writeFileAtomic } from '../fs/atomic.js';
 import { errorMessage } from '../util/errors.js';
-import { StoreError } from './errors.js';
+import { NewerVersionError, StoreError } from './errors.js';
 import { isNotFound } from './fs-utils.js';
 
 export interface JsonRead<T> {
@@ -22,6 +22,8 @@ async function attempt<T>(path: string, parse: (raw: unknown) => T): Promise<Att
   try {
     return { ok: true, value: parse(JSON.parse(text)) };
   } catch (error) {
+    // A newer file is not corruption: never fall back to a backup or overwrite it.
+    if (error instanceof NewerVersionError) throw error;
     return { ok: false, problem: errorMessage(error) };
   }
 }
@@ -54,7 +56,8 @@ function accepts(text: string, parse: (raw: unknown) => unknown): boolean {
   try {
     parse(JSON.parse(text));
     return true;
-  } catch {
+  } catch (error) {
+    if (error instanceof NewerVersionError) throw error;
     return false;
   }
 }
@@ -74,8 +77,14 @@ export async function writeJsonWithBackup(
   } catch (error) {
     if (!isNotFound(error)) throw error;
   }
-  if (current !== undefined && accepts(current, parse)) {
-    await writeFileAtomic(backupPath(path), current);
+  if (current !== undefined) {
+    if (accepts(current, parse)) {
+      await writeFileAtomic(backupPath(path), current);
+    } else {
+      // Keep the invalid file for manual recovery instead of overwriting it.
+      const stamp = new Date().toISOString().replaceAll(':', '-');
+      await rename(path, `${path}.corrupt-${stamp}`);
+    }
   }
   await writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
 }

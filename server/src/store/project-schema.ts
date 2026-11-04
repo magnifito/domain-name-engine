@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { DomainCheck } from '../domain/types.js';
 import { NAME_STYLES, nonBlank, RulesetIdSchema } from '../rulesets/schema.js';
 import { BriefSchema, LANGUAGE_CODE } from './brief.js';
-import { StoreError, zodMessage } from './errors.js';
+import { NewerVersionError, StoreError, zodMessage } from './errors.js';
 
 export const PROJECT_SCHEMA_VERSION = 1;
 export const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
@@ -108,6 +108,15 @@ export function parseProject(raw: unknown): Project {
     typeof raw === 'object' && raw !== null
       ? (raw as { schemaVersion?: unknown }).schemaVersion
       : undefined;
+  if (typeof version === 'number' && version > PROJECT_SCHEMA_VERSION) {
+    const slug =
+      typeof (raw as { slug?: unknown }).slug === 'string'
+        ? `Project "${(raw as { slug: string }).slug}"`
+        : 'This project';
+    throw new NewerVersionError(
+      `${slug} was written by a newer engine (schemaVersion ${version}); upgrade the plugin.`,
+    );
+  }
   if (version !== PROJECT_SCHEMA_VERSION) {
     throw new StoreError(
       `schemaVersion is ${String(version)}; this engine reads schemaVersion ${PROJECT_SCHEMA_VERSION}.`,
