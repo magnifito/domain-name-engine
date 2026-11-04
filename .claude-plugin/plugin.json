@@ -3,10 +3,100 @@
   "displayName": "Domain Name Engine",
   "version": "0.1.0",
   "description": "Find a strong brand name and domain: LLM-driven naming with RDAP/WHOIS/DNS availability checks, brand research tools, and dated registrar prices for Spaceship, Namecheap, and Cloudflare.",
-  "author": { "name": "Magnifito" },
+  "author": {
+    "name": "Magnifito"
+  },
   "homepage": "https://github.com/magnifito/domain-name-engine#readme",
   "repository": "https://github.com/magnifito/domain-name-engine",
   "license": "MIT",
-  "keywords": ["domain", "naming", "branding", "rdap", "whois", "registrar", "mcp"],
-  "icon": "./.claude-plugin/icon.png"
+  "keywords": [
+    "domain",
+    "naming",
+    "branding",
+    "rdap",
+    "whois",
+    "registrar",
+    "mcp"
+  ],
+  "icon": "./.claude-plugin/icon.png",
+  "userConfig": {
+    "spaceship_api_key": {
+      "type": "string",
+      "title": "Spaceship API key",
+      "description": "Optional. Spaceship API Manager key with the domains:read scope. Live prices and availability.",
+      "sensitive": true
+    },
+    "spaceship_api_secret": {
+      "type": "string",
+      "title": "Spaceship API secret",
+      "description": "Optional. Secret shown once when you create the Spaceship API key.",
+      "sensitive": true
+    },
+    "namecheap_api_user": {
+      "type": "string",
+      "title": "Namecheap API user",
+      "description": "Optional. Your Namecheap username."
+    },
+    "namecheap_api_key": {
+      "type": "string",
+      "title": "Namecheap API key",
+      "description": "Optional. From Profile > Tools > API Access. Your account must qualify for API access.",
+      "sensitive": true
+    },
+    "namecheap_client_ip": {
+      "type": "string",
+      "title": "Namecheap client IP",
+      "description": "Optional. Your public IPv4. It must be on the Namecheap API allow list."
+    },
+    "cloudflare_api_token": {
+      "type": "string",
+      "title": "Cloudflare API token",
+      "description": "Optional. Custom API token with Registrar access. Live prices and availability (beta API).",
+      "sensitive": true
+    },
+    "cloudflare_account_id": {
+      "type": "string",
+      "title": "Cloudflare account ID",
+      "description": "Optional. Shown in the Cloudflare dashboard on the account overview."
+    },
+    "github_token": {
+      "type": "string",
+      "title": "GitHub token",
+      "description": "Optional. Fine-grained token with no repository access. Raises the GitHub handle check limit.",
+      "sensitive": true
+    },
+    "reddit_client_id": {
+      "type": "string",
+      "title": "Reddit client ID",
+      "description": "Optional. Client ID of a Reddit script app. Enables the Reddit username check."
+    },
+    "reddit_client_secret": {
+      "type": "string",
+      "title": "Reddit client secret",
+      "description": "Optional. Secret of the same Reddit script app.",
+      "sensitive": true
+    },
+    "youtube_api_key": {
+      "type": "string",
+      "title": "YouTube API key",
+      "description": "Optional. Google Cloud API key restricted to YouTube Data API v3. Enables the YouTube handle check.",
+      "sensitive": true
+    },
+    "euipo_client_id": {
+      "type": "string",
+      "title": "EUIPO client ID",
+      "description": "Optional. Client ID of your app on dev.euipo.europa.eu. Enables EU trademark search."
+    },
+    "euipo_client_secret": {
+      "type": "string",
+      "title": "EUIPO client secret",
+      "description": "Optional. Client secret of the same EUIPO app.",
+      "sensitive": true
+    },
+    "euipo_env": {
+      "type": "string",
+      "title": "EUIPO environment",
+      "description": "Optional. Type sandbox for EUIPO test credentials. Leave empty for production."
+    }
+  }
 }

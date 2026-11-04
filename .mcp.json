@@ -2,7 +2,9 @@
   "mcpServers": {
     "domain-engine": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/server/dist/index.js"],
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/server/dist/index.js"
+      ],
       "env": {
         "DOMAIN_ENGINE_HOME": "${DOMAIN_ENGINE_HOME:-}",
         "SPACESHIP_API_KEY": "${SPACESHIP_API_KEY:-}",
@@ -18,7 +20,21 @@
         "YOUTUBE_API_KEY": "${YOUTUBE_API_KEY:-}",
         "EUIPO_CLIENT_ID": "${EUIPO_CLIENT_ID:-}",
         "EUIPO_CLIENT_SECRET": "${EUIPO_CLIENT_SECRET:-}",
-        "EUIPO_ENV": "${EUIPO_ENV:-}"
+        "EUIPO_ENV": "${EUIPO_ENV:-}",
+        "USER_CONFIG_SPACESHIP_API_KEY": "${user_config.spaceship_api_key}",
+        "USER_CONFIG_SPACESHIP_API_SECRET": "${user_config.spaceship_api_secret}",
+        "USER_CONFIG_NAMECHEAP_API_USER": "${user_config.namecheap_api_user}",
+        "USER_CONFIG_NAMECHEAP_API_KEY": "${user_config.namecheap_api_key}",
+        "USER_CONFIG_NAMECHEAP_CLIENT_IP": "${user_config.namecheap_client_ip}",
+        "USER_CONFIG_CLOUDFLARE_API_TOKEN": "${user_config.cloudflare_api_token}",
+        "USER_CONFIG_CLOUDFLARE_ACCOUNT_ID": "${user_config.cloudflare_account_id}",
+        "USER_CONFIG_GITHUB_TOKEN": "${user_config.github_token}",
+        "USER_CONFIG_REDDIT_CLIENT_ID": "${user_config.reddit_client_id}",
+        "USER_CONFIG_REDDIT_CLIENT_SECRET": "${user_config.reddit_client_secret}",
+        "USER_CONFIG_YOUTUBE_API_KEY": "${user_config.youtube_api_key}",
+        "USER_CONFIG_EUIPO_CLIENT_ID": "${user_config.euipo_client_id}",
+        "USER_CONFIG_EUIPO_CLIENT_SECRET": "${user_config.euipo_client_secret}",
+        "USER_CONFIG_EUIPO_ENV": "${user_config.euipo_env}"
       }
     }
   }

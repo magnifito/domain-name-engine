@@ -14,6 +14,16 @@ describe('readEnv', () => {
   it('treats an unexpanded ${VAR} placeholder as unset', () => {
     expect(readEnv({ A: '${GITHUB_TOKEN}' }, 'A')).toBeUndefined();
   });
+
+  it('prefers the plugin settings value over the env variable', () => {
+    expect(readEnv({ USER_CONFIG_A: ' form ', A: 'shell' }, 'A')).toBe('form');
+  });
+
+  it('falls back to the env variable when the plugin settings value is empty', () => {
+    // Claude Code substitutes an unset ${user_config.x} with an empty string.
+    expect(readEnv({ USER_CONFIG_A: '', A: 'shell' }, 'A')).toBe('shell');
+    expect(readEnv({ USER_CONFIG_A: '${user_config.a}', A: 'shell' }, 'A')).toBe('shell');
+  });
 });
 
 describe('placeholders in the shared readers (M3)', () => {

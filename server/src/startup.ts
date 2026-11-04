@@ -1,4 +1,5 @@
 import { readCredentials, redact, secretValues } from './registrars/credentials.js';
+import { USER_CONFIG_PREFIX } from './util/env.js';
 import { errorMessage } from './util/errors.js';
 
 /** Keys of the research tools. Their values are never read here, only redacted from messages. */
@@ -13,9 +14,10 @@ const RESEARCH_KEYS = [
 
 function researchSecrets(env: NodeJS.ProcessEnv): string[] {
   // Redact both the raw value and its trimmed form, since the keys are read trimmed.
-  return RESEARCH_KEYS.flatMap((name) => [env[name] ?? '', env[name]?.trim() ?? '']).filter(
-    (v) => v.length >= 4,
-  );
+  // Each key can come from the env variable or from the plugin settings form.
+  return RESEARCH_KEYS.flatMap((key) => [key, `${USER_CONFIG_PREFIX}${key}`])
+    .flatMap((name) => [env[name] ?? '', env[name]?.trim() ?? ''])
+    .filter((v) => v.length >= 4);
 }
 
 export interface StartupIo {

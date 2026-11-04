@@ -8,7 +8,19 @@ Some steps changed recently or sit behind pages we could not read. Where a step 
 
 ## Where to put the keys
 
-1. Export each key in the shell that starts `claude` or `codex`. Add the lines to `~/.zshrc` or `~/.bashrc`, or load them from a secrets manager.
+### Claude Code: the plugin settings form (recommended)
+
+1. Enable the plugin. Claude Code shows a form with one field per key. Every field is optional.
+2. Paste each key into its field. Secret fields are masked.
+3. To change a key later, open `/plugin`, pick **domain-name-engine**, and edit its settings. Then restart Claude Code.
+
+Claude Code stores secret fields (API keys, secrets, tokens) in the system credential store, which is the Keychain on macOS. It does not write them to `settings.json`. Non-secret fields (Namecheap user and IP, Cloudflare account ID, the Reddit and EUIPO client IDs, `EUIPO_ENV`) go under `pluginConfigs` in your `settings.json`. Claude Code passes the values only to the plugin's MCP server. They are not in your shell, and not in the commands Claude runs for you. Official source: https://code.claude.com/docs/en/plugins-reference (section "User configuration").
+
+A value in the form wins over an env variable with the same name.
+
+### Codex, or Claude Code with env variables
+
+1. Export each key in the shell that starts `claude` or `codex`.
 
    ```sh
    export SPACESHIP_API_KEY="<your-key>"
@@ -18,13 +30,37 @@ Some steps changed recently or sit behind pages we could not read. Where a step 
 2. Open a new terminal so the shell reads the new values.
 3. Start `claude` or `codex` from that terminal.
 
-**Codex:** the plugin's `.codex-mcp.json` lists every variable under `env_vars`. Codex starts MCP servers with a cleared environment and forwards only the listed names from its own environment. Nothing else is needed. Official source: https://developers.openai.com/codex/mcp (field `env_vars`).
+A plain `export` line in `~/.zshrc` leaves the key in a text file and gives it to every program you start. To avoid that on macOS, keep the key in the Keychain and pass it only to `claude` and `codex`:
 
-**Claude Code:** the plugin's `.mcp.json` lists every variable as `"NAME": "${NAME:-}"`. Claude Code expands `${NAME}` to the shell value. `${NAME:-}` expands to an empty string when the variable is unset, so a missing key causes no warning. An empty string counts as set, so the server treats a blank value as "no key". The server reads the keys from its own environment only.
+```sh
+# Run once per key. It prompts for the value, so the key stays out of shell history.
+security add-generic-password -a "$USER" -s SPACESHIP_API_KEY -w
+security add-generic-password -a "$USER" -s SPACESHIP_API_SECRET -w
+```
+
+Then add this to `~/.zshrc`. It holds no secrets:
+
+```sh
+_dne_env() {
+  SPACESHIP_API_KEY="$(security find-generic-password -a "$USER" -s SPACESHIP_API_KEY -w)" \
+  SPACESHIP_API_SECRET="$(security find-generic-password -a "$USER" -s SPACESHIP_API_SECRET -w)" \
+  "$@"
+}
+claude() { _dne_env command claude "$@"; }
+codex()  { _dne_env command codex "$@"; }
+```
+
+Add one line per key you use. With this setup the commands that `claude` or `codex` run still inherit the keys.
+
+How each host passes env variables:
+
+- **Codex:** the plugin's `.codex-mcp.json` lists every variable under `env_vars`. Codex starts MCP servers with a cleared environment and forwards only the listed names. Official source: https://developers.openai.com/codex/mcp (field `env_vars`).
+- **Claude Code:** the plugin's `.mcp.json` lists every variable as `"NAME": "${NAME:-}"`. An unset variable expands to an empty string, and the server treats a blank value as "no key". Official source: https://code.claude.com/docs/en/mcp (section "Environment variable expansion in .mcp.json").
 
 Rules:
 
 - Never commit keys. Never put them in a project file.
+- Give each key the smallest scope the guide lists. Anything that runs as your user can read the Keychain, so a narrow scope limits the damage if a key leaks.
 - Never paste a key into the chat.
 - Run `registrar_status` to see which keys the server found. It shows set or not set, never the values.
 

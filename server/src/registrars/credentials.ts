@@ -35,7 +35,7 @@ const LIVE_FEATURES: Record<RegistrarId, string> = {
   cloudflare: 'live availability, premium tier, and price (Registrar API, beta)',
 };
 
-/** Reads registrar keys from env. A registrar counts only when all its variables are set. */
+/** Reads registrar keys from the plugin settings form or env. A registrar counts only when all its variables are set. */
 export function readCredentials(env: NodeJS.ProcessEnv = process.env): Credentials {
   const creds: Credentials = {};
   const ssKey = read(env, 'SPACESHIP_API_KEY');
@@ -101,7 +101,7 @@ export const OTHER_ENV_VARS: ReadonlyArray<{ name: string; usedFor: string }> = 
 ];
 
 export const STATUS_NOTE =
-  'Key values are never returned, logged, or stored. Without keys, registrar_quote returns bundled table prices only.';
+  'Key values are never returned, logged, or stored. Set keys in the Claude Code plugin settings (/plugin) or as env variables with the names listed here. Without keys, registrar_quote returns bundled table prices only.';
 
 export function registrarStatus(env: NodeJS.ProcessEnv = process.env): RegistrarStatusReport {
   return {

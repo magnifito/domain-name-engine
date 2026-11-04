@@ -60,4 +60,18 @@ describe('runStartup', () => {
     }, fake);
     expect(fake.out[0]).not.toContain('gh-token-1111');
   });
+
+  it('redacts keys that come from the plugin settings form', async () => {
+    const fake = io({
+      USER_CONFIG_SPACESHIP_API_KEY: 'ss-key-7777',
+      USER_CONFIG_SPACESHIP_API_SECRET: 'ss-secret-8888',
+      USER_CONFIG_YOUTUBE_API_KEY: 'yt-key-9999',
+    });
+    await runStartup(async () => {
+      throw new Error('x ss-key-7777 ss-secret-8888 yt-key-9999');
+    }, fake);
+    expect(fake.out[0]).toBe(
+      'domain-name-engine: failed to start: x [redacted] [redacted] [redacted]\n',
+    );
+  });
 });

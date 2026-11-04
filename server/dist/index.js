@@ -7902,13 +7902,19 @@ var DiskCache = class {
 	}
 };
 // src/util/env.ts
-/**
-* Reads one env variable. Returns undefined when it is unset, blank, or an unexpanded
-* "${VAR}" placeholder (what .mcp.json passes when the variable is not set).
-*/
-function readEnv(env, name) {
+/** Prefix of the env names .mcp.json uses for values from the Claude Code plugin settings form. */
+const USER_CONFIG_PREFIX = "USER_CONFIG_";
+function readOne(env, name) {
 	const value = env[name]?.trim();
 	return value && !value.startsWith("${") ? value : void 0;
+}
+/**
+* Reads one setting. The plugin settings form value (USER_CONFIG_<NAME>) wins over the plain
+* env variable <NAME>. Each counts as unset when it is missing, blank, or an unexpanded
+* "${...}" placeholder (what a host passes when it does not substitute the reference).
+*/
+function readEnv(env, name) {
+	return readOne(env, `USER_CONFIG_${name}`) ?? readOne(env, name);
 }
 // src/config.ts
 const VERSION = "0.1.0";
@@ -9001,7 +9007,7 @@ const LIVE_FEATURES = {
 	namecheap: "live availability, premium flag, and price (the caller IP must be allow-listed)",
 	cloudflare: "live availability, premium tier, and price (Registrar API, beta)"
 };
-/** Reads registrar keys from env. A registrar counts only when all its variables are set. */
+/** Reads registrar keys from the plugin settings form or env. A registrar counts only when all its variables are set. */
 function readCredentials(env = process.env) {
 	const creds = {};
 	const ssKey = readEnv(env, "SPACESHIP_API_KEY");
@@ -9071,7 +9077,7 @@ const OTHER_ENV_VARS = [
 		usedFor: "search_trademarks: \"sandbox\" for EUIPO test data"
 	}
 ];
-const STATUS_NOTE = "Key values are never returned, logged, or stored. Without keys, registrar_quote returns bundled table prices only.";
+const STATUS_NOTE = "Key values are never returned, logged, or stored. Set keys in the Claude Code plugin settings (/plugin) or as env variables with the names listed here. Without keys, registrar_quote returns bundled table prices only.";
 function registrarStatus(env = process.env) {
 	return {
 		registrars: REGISTRARS.map((registrar) => {
@@ -26382,7 +26388,7 @@ const RESEARCH_KEYS = [
 	"EUIPO_CLIENT_SECRET"
 ];
 function researchSecrets(env) {
-	return RESEARCH_KEYS.flatMap((name) => [env[name] ?? "", env[name]?.trim() ?? ""]).filter((v) => v.length >= 4);
+	return RESEARCH_KEYS.flatMap((key) => [key, `${USER_CONFIG_PREFIX}${key}`]).flatMap((name) => [env[name] ?? "", env[name]?.trim() ?? ""]).filter((v) => v.length >= 4);
 }
 const processIo = {
 	stderr: (text) => process.stderr.write(text),
