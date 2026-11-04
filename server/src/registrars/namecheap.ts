@@ -164,9 +164,22 @@ export function createNamecheapClient(creds: NamecheapCreds, deps: NamecheapDeps
   const now = deps.now ?? (() => new Date());
 
   // One call per action returns the prices of every TLD, so a quote never needs one call per TLD.
-  async function allPrices(action: 'REGISTER' | 'RENEW'): Promise<NamecheapPrice[]> {
+  // A per-call memo keeps a failing or unreadable disk cache from causing one refetch per domain.
+  function allPrices(
+    action: 'REGISTER' | 'RENEW',
+    memo: Map<string, Promise<NamecheapPrice[]>>,
+  ): Promise<NamecheapPrice[]> {
+    let pending = memo.get(action);
+    if (!pending) {
+      pending = loadPrices(action);
+      memo.set(action, pending);
+    }
+    return pending;
+  }
+
+  async function loadPrices(action: 'REGISTER' | 'RENEW'): Promise<NamecheapPrice[]> {
     const key = `namecheap-prices:${action}`;
-    const cached = await deps.cache.get<NamecheapPrice[]>(key);
+    const cached = await deps.cache.get<NamecheapPrice[]>(key).catch(() => undefined);
     if (cached !== undefined) return cached;
     const xml = await call(deps.http, creds, 'namecheap.users.getPricing', {
       ProductType: 'DOMAIN',
@@ -181,14 +194,16 @@ export function createNamecheapClient(creds: NamecheapCreds, deps: NamecheapDeps
   async function tldPrice(
     tld: string,
     action: 'REGISTER' | 'RENEW',
+    memo: Map<string, Promise<NamecheapPrice[]>>,
   ): Promise<NamecheapPrice | null> {
-    return (await allPrices(action)).find((p) => p.product === tld) ?? null;
+    return (await allPrices(action, memo)).find((p) => p.product === tld) ?? null;
   }
 
   return {
     id: 'namecheap',
     async quote(domains) {
       const out: LiveQuote[] = [];
+      const memo = new Map<string, Promise<NamecheapPrice[]>>();
       for (const batch of chunk(domains, BATCH)) {
         const xml = await call(deps.http, creds, 'namecheap.domains.check', {
           DomainList: batch.join(','),
@@ -206,8 +221,8 @@ export function createNamecheapClient(creds: NamecheapCreds, deps: NamecheapDeps
             continue;
           }
           const tld = domain.slice(domain.indexOf('.') + 1);
-          const register = await tldPrice(tld, 'REGISTER');
-          const renew = check.premium ? null : await tldPrice(tld, 'RENEW');
+          const register = await tldPrice(tld, 'REGISTER', memo);
+          const renew = check.premium ? null : await tldPrice(tld, 'RENEW', memo);
           // Premium prices carry no currency attribute; they use the account currency,
           // which the TLD price response reports.
           const currency = register?.currency ?? renew?.currency ?? null;
