@@ -1,0 +1,11 @@
+{
+  "name": "magnifito",
+  "owner": { "name": "Magnifito" },
+  "plugins": [
+    {
+      "name": "domain-name-engine",
+      "source": "./",
+      "description": "Find a strong brand name and domain with real availability checks and brand research tools."
+    }
+  ]
+}
