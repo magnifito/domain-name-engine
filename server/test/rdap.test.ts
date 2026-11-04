@@ -62,6 +62,12 @@ describe('loadRdapServers', () => {
     expect(urls).toEqual([IANA_RDAP_BOOTSTRAP]);
   });
 
+  it('throws a clear error on a malformed bootstrap file', async () => {
+    const cache = new DiskCache(await mkdtemp(join(tmpdir(), 'dne-rdap-')));
+    const { http } = routeHttp({ [IANA_RDAP_BOOTSTRAP]: Response.json({ nope: true }) });
+    await expect(loadRdapServers(http, cache)).rejects.toThrow('malformed');
+  });
+
   it('throws when IANA returns an error status', async () => {
     const cache = new DiskCache(await mkdtemp(join(tmpdir(), 'dne-rdap-')));
     const { http } = routeHttp({ [IANA_RDAP_BOOTSTRAP]: new Response('', { status: 503 }) });
@@ -109,6 +115,16 @@ describe('rdapLookup', () => {
       kind: 'error',
       reason: 'offline',
     });
+  });
+
+  it('percent-encodes the domain so it cannot alter the request path', async () => {
+    const { http, urls } = routeHttp({});
+    await rdapLookup('a/../b?x=1.com', 'com', { http, servers: async () => servers });
+    expect(urls).toEqual(['https://rdap.verisign.com/com/v1/domain/a%2F..%2Fb%3Fx%3D1.com']);
+  });
+
+  it('looks the TLD up case-insensitively', async () => {
+    expect(rdapBaseFor(servers, 'COM')).toBe('https://rdap.verisign.com/com/v1/');
   });
 
   it('reports error when the bootstrap cannot load', async () => {

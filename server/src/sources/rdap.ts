@@ -23,6 +23,9 @@ export type RdapResult =
   | { kind: 'error'; reason: string };
 
 export function parseBootstrap(file: { services: [string[], string[]][] }): RdapServers {
+  if (!file || !Array.isArray(file.services)) {
+    throw new Error('IANA RDAP bootstrap file is malformed');
+  }
   const servers: RdapServers = {};
   for (const [tlds, urls] of file.services) {
     for (const tld of tlds) servers[tld.toLowerCase()] = urls;
@@ -45,7 +48,8 @@ export async function loadRdapServers(http: HttpFetch, cache: DiskCache): Promis
 }
 
 export function rdapBaseFor(servers: RdapServers, tld: string): string | undefined {
-  const candidates = [tld, tld.split('.').at(-1) ?? tld];
+  const lower = tld.toLowerCase();
+  const candidates = [lower, lower.split('.').at(-1) ?? lower];
   for (const candidate of candidates) {
     const urls = servers[candidate];
     if (urls && urls.length > 0) return urls.find((u) => u.startsWith('https://')) ?? urls[0];
@@ -67,7 +71,10 @@ export async function rdapLookup(
   const base = rdapBaseFor(servers, tld);
   if (!base) return { kind: 'no_server' };
 
-  const url = new URL(`domain/${domain}`, base.endsWith('/') ? base : `${base}/`).toString();
+  const url = new URL(
+    `domain/${encodeURIComponent(domain)}`,
+    base.endsWith('/') ? base : `${base}/`,
+  ).toString();
   try {
     const res = await deps.http(url, { headers: { accept: 'application/rdap+json' } });
     if (res.status === 404) return { kind: 'not_found' };
