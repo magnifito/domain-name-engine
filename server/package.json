@@ -1,0 +1,29 @@
+{
+  "name": "domain-name-engine-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.27.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:live": "LIVE=1 vitest run test/live",
+    "check": "biome ci .",
+    "format": "biome check --write ."
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4",
+    "@types/node": "^20.19.43",
+    "tsdown": "0.23.5",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}
