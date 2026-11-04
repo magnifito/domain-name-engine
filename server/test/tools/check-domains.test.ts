@@ -50,6 +50,13 @@ describe('check_domains tool', () => {
     expect(res.text).toContain('"-bad" is not a valid domain label');
   });
 
+  it('returns a tool error for a non-registry multi-label suffix', async () => {
+    const client = await connectClient(fakeRuntime());
+    const res = await callJson(client, 'check_domains', { names: ['acme'], tlds: ['vercel.app'] });
+    expect(res.isError).toBe(true);
+    expect(res.text).toContain('is not a known registry suffix');
+  });
+
   it('rejects more than 200 domains in one call', async () => {
     const client = await connectClient(fakeRuntime());
     const names = Array.from({ length: 60 }, (_, i) => `name${i}`);

@@ -32,6 +32,11 @@ describe('normalizeTld', () => {
 
   it('accepts multi-label TLDs up to three labels', () => {
     expect(normalizeTld('co.uk')).toBe('co.uk');
+    expect(normalizeTld('.CO.UK')).toBe('co.uk');
+  });
+
+  it.each(['google.com', 'vercel.app', 'github.io'])('rejects non-registry suffix %j', (input) => {
+    expect(() => normalizeTld(input)).toThrow(/is not a known registry suffix/);
   });
 
   it.each(['', '.', 'a.b.c.d', 'c_m', '-io'])('rejects %j', (input) => {

@@ -26,7 +26,9 @@ export function registerCheckDomains(server: McpServer, rt: Pick<Runtime, 'check
           .array(z.string())
           .min(1)
           .max(30)
-          .describe('TLDs with or without a leading dot, e.g. "com", ".io", "co.uk"'),
+          .describe(
+            'TLDs with or without a leading dot, e.g. "com", ".io"; multi-label values must be registry suffixes such as "co.uk"',
+          ),
       },
     },
     async ({ names, tlds }) => {
