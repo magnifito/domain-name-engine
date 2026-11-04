@@ -7893,7 +7893,7 @@ var DiskCache = class {
 const VERSION = "0.1.0";
 const USER_AGENT = `domain-name-engine/${VERSION} (+https://github.com/magnifito/domain-name-engine)`;
 function engineHome(env = process.env) {
-	return env.DOMAIN_ENGINE_HOME ?? join(homedir(), ".domain-engine");
+	return env.DOMAIN_ENGINE_HOME || join(homedir(), ".domain-engine");
 }
 function enginePaths(home) {
 	return {
@@ -7920,6 +7920,44 @@ var ValidationError = class extends Error {
 };
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const TLD_PART = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const MULTI_LABEL_TLDS = /* @__PURE__ */ new Set([
+	"co.uk",
+	"org.uk",
+	"me.uk",
+	"ltd.uk",
+	"plc.uk",
+	"net.uk",
+	"com.au",
+	"net.au",
+	"org.au",
+	"co.nz",
+	"net.nz",
+	"org.nz",
+	"co.jp",
+	"ne.jp",
+	"or.jp",
+	"com.br",
+	"net.br",
+	"com.mx",
+	"co.za",
+	"co.in",
+	"net.in",
+	"org.in",
+	"com.cn",
+	"com.tw",
+	"com.hk",
+	"com.sg",
+	"com.tr",
+	"co.il",
+	"com.ar",
+	"com.co",
+	"co.kr",
+	"com.my",
+	"com.ph",
+	"com.pl",
+	"com.ua",
+	"co.id"
+]);
 function normalizeLabel(input) {
 	const label = input.trim().toLowerCase();
 	if (!LABEL.test(label)) throw new ValidationError(`"${input}" is not a valid domain label: use 1-63 ASCII letters, digits, or inner hyphens (punycode for non-ASCII).`);
@@ -7929,6 +7967,7 @@ function normalizeTld(input) {
 	const tld = input.trim().toLowerCase().replace(/^\./, "");
 	const parts = tld.split(".");
 	if (parts.length > 3 || !parts.every((part) => TLD_PART.test(part))) throw new ValidationError(`"${input}" is not a valid TLD.`);
+	if (parts.length > 1 && !MULTI_LABEL_TLDS.has(tld)) throw new ValidationError(`"${input}" is not a known registry suffix; use a single-label TLD like "com" or a registry suffix like "co.uk".`);
 	return tld;
 }
 function joinDomain(label, tld) {
@@ -8016,7 +8055,9 @@ async function checkDomain(domain, deps) {
 	const cached = await deps.cache.get(key);
 	if (cached) return cached;
 	const result = await resolveStatus(domain, tld, deps);
-	await deps.cache.set(key, result, ttlFor(result));
+	try {
+		await deps.cache.set(key, result, ttlFor(result));
+	} catch {}
 	return result;
 }
 async function checkDomains(domains, deps, concurrency = 4) {
@@ -8146,7 +8187,9 @@ async function loadRdapServers(http, cache) {
 	const res = await http(IANA_RDAP_BOOTSTRAP);
 	if (!res.ok) throw new Error(`IANA RDAP bootstrap returned HTTP ${res.status}`);
 	const servers = parseBootstrap(await res.json());
-	await cache.set(BOOTSTRAP_CACHE_KEY, servers, TTL.rdapBootstrap);
+	try {
+		await cache.set(BOOTSTRAP_CACHE_KEY, servers, TTL.rdapBootstrap);
+	} catch {}
 	return servers;
 }
 function rdapBaseFor(servers, tld) {
@@ -8208,26 +8251,39 @@ const REGISTERED_PATTERNS = [
 	/^\s*created:/im,
 	/^\s*registered:/im
 ];
-function tcpWhoisQuery(timeoutMs = 8e3) {
+const MAX_RESPONSE_BYTES = 65536;
+function tcpWhoisQuery(timeoutMs = 8e3, port = 43) {
 	return (server, query) => new Promise((resolve, reject) => {
 		const socket = connect({
 			host: server,
-			port: 43
+			port
 		});
 		const chunks = [];
+		let received = 0;
+		const deadline = setTimeout(() => {
+			socket.destroy(/* @__PURE__ */ new Error(`WHOIS ${server} exceeded ${timeoutMs} ms`));
+		}, timeoutMs);
 		socket.setTimeout(timeoutMs, () => {
 			socket.destroy(/* @__PURE__ */ new Error(`WHOIS ${server} timed out after ${timeoutMs} ms`));
 		});
 		socket.on("connect", () => socket.write(`${query}\r\n`));
-		socket.on("data", (chunk) => chunks.push(chunk));
+		socket.on("data", (chunk) => {
+			received += chunk.length;
+			if (received > MAX_RESPONSE_BYTES) {
+				socket.destroy(/* @__PURE__ */ new Error(`WHOIS ${server} response exceeded ${MAX_RESPONSE_BYTES} bytes`));
+				return;
+			}
+			chunks.push(chunk);
+		});
 		socket.on("error", reject);
 		socket.on("close", (hadError) => {
+			clearTimeout(deadline);
 			if (!hadError) resolve(Buffer.concat(chunks).toString("utf8"));
 		});
 	});
 }
 function parseReferral(text) {
-	return text.match(/^whois:\s*(\S+)/im)?.[1]?.toLowerCase() ?? null;
+	return text.match(/^whois:[ \t]*(\S+)/im)?.[1]?.toLowerCase() ?? null;
 }
 function parseAvailability(text) {
 	if (NOT_FOUND_PATTERNS.some((pattern) => pattern.test(text))) return "not_found";
@@ -8240,8 +8296,15 @@ async function whoisLookup(domain, tld, deps) {
 		const cacheKey = `whois:server:${rootLabel}`;
 		let server = await deps.cache.get(cacheKey);
 		if (server === void 0) {
-			server = parseReferral(await deps.limiter.schedule(IANA_WHOIS, () => deps.query(IANA_WHOIS, rootLabel)));
-			await deps.cache.set(cacheKey, server, TTL.rdapBootstrap);
+			const iana = await deps.limiter.schedule(IANA_WHOIS, () => deps.query(IANA_WHOIS, rootLabel));
+			if (!/^domain:[ \t]*\S/im.test(iana)) return {
+				kind: "error",
+				reason: "IANA WHOIS reply not understood"
+			};
+			server = parseReferral(iana);
+			try {
+				await deps.cache.set(cacheKey, server, TTL.rdapBootstrap);
+			} catch {}
 		}
 		if (!server) return { kind: "no_server" };
 		const target = server;
@@ -22018,7 +22081,7 @@ function registerCheckDomains(server, rt) {
 		description: "Check every name × TLD pair with RDAP, a WHOIS fallback, and DNS. Each result is registered, likely_available, or unknown, with source, checkedAt, and confidence.",
 		inputSchema: {
 			names: array(string()).min(1).max(100).describe("Second-level labels without TLD, e.g. \"acme\""),
-			tlds: array(string()).min(1).max(30).describe("TLDs with or without a leading dot, e.g. \"com\", \".io\", \"co.uk\"")
+			tlds: array(string()).min(1).max(30).describe("TLDs with or without a leading dot, e.g. \"com\", \".io\"; multi-label values must be registry suffixes such as \"co.uk\"")
 		}
 	}, async ({ names, tlds }) => {
 		let domains;
