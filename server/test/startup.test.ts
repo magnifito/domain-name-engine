@@ -33,4 +33,23 @@ describe('runStartup', () => {
     }, fake);
     expect(fake.out[0]).toBe('domain-name-engine: failed to start: bad token [redacted]\n');
   });
+
+  it('redacts the research keys of the other plans too (M5)', async () => {
+    const fake = io({
+      GITHUB_TOKEN: 'gh-token-1111',
+      REDDIT_CLIENT_ID: 'rd-id-2222',
+      REDDIT_CLIENT_SECRET: 'rd-secret-3333',
+      YOUTUBE_API_KEY: 'yt-key-4444',
+      EUIPO_CLIENT_ID: 'eu-id-5555',
+      EUIPO_CLIENT_SECRET: 'eu-secret-6666',
+    });
+    await runStartup(async () => {
+      throw new Error(
+        'x gh-token-1111 rd-id-2222 rd-secret-3333 yt-key-4444 eu-id-5555 eu-secret-6666',
+      );
+    }, fake);
+    expect(fake.out[0]).toBe(
+      'domain-name-engine: failed to start: x [redacted] [redacted] [redacted] [redacted] [redacted] [redacted]\n',
+    );
+  });
 });
