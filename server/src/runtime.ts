@@ -4,11 +4,12 @@ import { type CheckDeps, checkDomains } from './domain/check.js';
 import type { DomainCheck } from './domain/types.js';
 import { createHttp } from './http/http.js';
 import { HostLimiter } from './limiter/limiter.js';
+import { createRegistrarRuntime, type RegistrarRuntime } from './registrars/runtime-part.js';
 import { hasNameservers } from './sources/dns.js';
 import { loadRdapServers, type RdapServers, rdapLookup } from './sources/rdap.js';
 import { tcpWhoisQuery, whoisLookup } from './sources/whois.js';
 
-export interface Runtime {
+export interface Runtime extends RegistrarRuntime {
   checkDomains(domains: string[]): Promise<DomainCheck[]>;
 }
 
@@ -38,5 +39,6 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
 
   return {
     checkDomains: (domains) => checkDomains(domains, deps),
+    ...createRegistrarRuntime({ http, cache, env }),
   };
 }
