@@ -1,3 +1,5 @@
+import { readEnv as read } from '../util/env.js';
+
 export type EuipoEnv = 'production' | 'sandbox';
 
 /** Optional API keys for research sources. Read from env only; never logged or returned. */
@@ -6,11 +8,6 @@ export interface ResearchKeys {
   reddit?: { clientId: string; clientSecret: string };
   youtubeApiKey?: string;
   euipo?: { clientId: string; clientSecret: string; env: EuipoEnv };
-}
-
-function read(env: NodeJS.ProcessEnv, name: string): string | undefined {
-  const value = env[name]?.trim();
-  return value ? value : undefined;
 }
 
 export function readResearchKeys(env: NodeJS.ProcessEnv): ResearchKeys {

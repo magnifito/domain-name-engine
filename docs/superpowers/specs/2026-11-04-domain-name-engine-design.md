@@ -219,7 +219,7 @@ When a registrar's keys are set, `registrar_quote` asks that registrar's API abo
 | `check_domains` | Availability for a list of `label × TLD` pairs |
 | `profile_domain` | Profile of a registered domain |
 | `check_handles` | Handle availability across platforms |
-| `search_trademarks` | Similar marks in USPTO and EUIPO |
+| `search_trademarks` | Similar marks from the EUIPO API (optional keys), plus search links for USPTO, WIPO, and TMview |
 | `project_create` | Create a project from a brief |
 | `project_list` | List projects |
 | `project_get` | Read a full project |

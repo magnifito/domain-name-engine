@@ -93,6 +93,8 @@ The seed table from 2026-11-04 covers a small set of TLDs:
 - Namecheap: rows without prices, marked "unverified", until the first refresh with API keys.
 - Cloudflare: 18 TLDs from cfdomainpricing.com/prices.json, a free third-party list of Cloudflare Registrar prices in USD.
 
+Without keys, Spaceship and Namecheap have no bundled price for common TLDs such as .com, .de, and .uk. Run `pnpm refresh:tlds` with keys set, or set the registrar keys for live quotes.
+
 The engine never scrapes registrar web pages. Spaceship and Namecheap price pages block automated clients, so the table is filled only from official APIs and documented public files.
 
 ## Data and privacy
@@ -100,7 +102,7 @@ The engine never scrapes registrar web pages. Spaceship and Namecheap price page
 - Projects, custom rulesets, and the cache live in `~/.domain-engine/`. Set `DOMAIN_ENGINE_HOME` to use another folder.
 - Reports are written to `~/.domain-engine/projects/<slug>/report.md`.
 - The server sends requests to RDAP and WHOIS servers, DNS resolvers, the research APIs, and the registrar APIs whose keys you set. Requests carry a generic `User-Agent` with the plugin name and repository URL, and no personal data.
-- Requests are rate limited per host, 1 request per second by default, with retries on HTTP 429 and 5xx.
+- Requests are rate limited per host, 1 request per second by default, with retries on HTTP 429 and 5xx for RDAP and registrar HTTP requests only. The homepage fetch and WHOIS make one try.
 
 ## Development
 

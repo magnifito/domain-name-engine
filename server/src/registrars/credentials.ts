@@ -1,4 +1,5 @@
 import { REGISTRAR_NAMES, REGISTRARS, type RegistrarId } from '../tld/schema.js';
+import { readEnv as read } from '../util/env.js';
 
 export interface SpaceshipCreds {
   apiKey: string;
@@ -33,12 +34,6 @@ const LIVE_FEATURES: Record<RegistrarId, string> = {
   namecheap: 'live availability, premium flag, and price (the caller IP must be allow-listed)',
   cloudflare: 'live availability, premium tier, and price (Registrar API, beta)',
 };
-
-function read(env: NodeJS.ProcessEnv, name: string): string | undefined {
-  const value = env[name]?.trim();
-  // An unexpanded "${VAR}" placeholder from .mcp.json means the variable is not set.
-  return value && !value.startsWith('${') ? value : undefined;
-}
 
 /** Reads registrar keys from env. A registrar counts only when all its variables are set. */
 export function readCredentials(env: NodeJS.ProcessEnv = process.env): Credentials {
