@@ -19,10 +19,10 @@ Run full checks for every shortlisted name in one project and save the results. 
 
 Run the steps in this order. If a tool returns an error, report it in one line, skip that step for that name, and continue with the next step. Never retry a tool more than once.
 
-1. **Domains.** Call `check_domains` with each shortlisted name on `.com` (unless the ruleset's `com` is `none`), every TLD in its ruleset's `tlds.order`, and every TLD in `extraTlds`. Keep each call at 200 domains or fewer; split the call if needed.
+1. **Domains.** Use the shortlist labels (lowercase LDH, exactly as stored in the project `shortlist`), not display names, as the `name` for `check_domains`. Call `check_domains` with each shortlisted label on `.com` (unless the ruleset's `com` is `none`), every TLD in its ruleset's `tlds.order`, and every TLD in `extraTlds`. Keep each call at 200 domains or fewer; split the call if needed.
 2. **Taken-domain profiles.** For each shortlisted name, take the `.com` result and the result for the first TLD in its ruleset's `tlds.order`. For each of those that is `registered`, call `profile_domain`. The verdict tells you whether the owner uses it (`live_site`), parks it (`parked`), sells it (`for_sale`), or has no site (`no_site`).
-3. **Handles.** Call `check_handles` with all shortlisted names. The `platforms` ids are lowercase and are the same ids as `nameRules.handles`: `github`, `npm`, `pypi`, `reddit`, `youtube`, `x`, `instagram`, `tiktok`, `linkedin`. Pass the brief's `nameRules.handles`, lowercased. If an entry is not one of these ids, leave it out of the call and tell the user it cannot be checked. If the brief lists no handles, omit `platforms` to check all of them.
-4. **Trademarks.** Call `search_trademarks` once per name. Pass `niceClasses` only when you are confident which Nice classes cover `subject.category` (for example 9 and 42 for software); otherwise omit it.
+3. **Handles.** Call `check_handles` with the shortlist labels (lowercase LDH), not display names. It accepts at most 20 handles per call, so split the labels into batches of 20 and make one call per batch. The `platforms` ids are lowercase and are the same ids as `nameRules.handles`: `github`, `npm`, `pypi`, `reddit`, `youtube`, `x`, `instagram`, `tiktok`, `linkedin`. Pass the brief's `nameRules.handles`, lowercased. If an entry is not one of these ids, leave it out of the call and tell the user it cannot be checked. If the brief lists no handles, omit `platforms` to check all of them. Match each result to its name by the label in `handle`.
+4. **Trademarks.** Keep the display name for this step and for the competitor scan: call `search_trademarks` once per name, with the display name. Pass `niceClasses` only when you are confident which Nice classes cover `subject.category` (for example 9 and 42 for software); otherwise omit it.
 5. **Competitor scan.** Use your built-in WebSearch, not the MCP server. For each name run:
    - `"<name>" <category>` and `"<name>" company`, to find businesses already using the name;
    - one search for the category in each target country, to find the main competitors and the domain patterns they use (for example `get<name>.com`, `<name>app.com`, `.io` instead of `.com`). Start from `positioning.competitors` when the brief lists any.
@@ -30,7 +30,7 @@ Run the steps in this order. If a tool returns an error, report it in one line, 
 6. **Save.** Call `project_add_checks` with the project `slug` and one `checks` entry per name and kind. Each entry is `{ "name": "<shortlisted name>", "kind": "<kind>", "results": [ ... ] }`:
    - kind `domain`: the `results` array of `check_domains` for that name's domains, exactly as returned;
    - kind `profile`: the `profile` object of each `profile_domain` call for that name, exactly as returned;
-   - kind `handle`: the `results` items of `check_handles` whose `handle` is that name, exactly as returned;
+   - kind `handle`: the `results` items of `check_handles` whose `handle` is that name's label, exactly as returned;
    - kind `trademark`: the complete set of `search_trademarks` results for that name, exactly as returned;
    - kind `competitor`: the complete set of competitor findings for that name from step 5.
 
