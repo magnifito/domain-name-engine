@@ -1,0 +1,32 @@
+{
+  "subject": {
+    "what": "A mobile app that plans weekly meals from what is already in the fridge.",
+    "category": "Consumer food tech",
+    "problem": "Busy parents waste food and time deciding what to cook each night.",
+    "features": ["fridge scan", "weekly plan", "shopping list"],
+    "keywords": ["meal", "fridge", "plan", "fresh"]
+  },
+  "audience": {
+    "who": "Parents aged 28-45 who cook at home",
+    "segment": "b2c",
+    "countries": ["DE", "GB"],
+    "languages": ["de", "en"]
+  },
+  "positioning": {
+    "competitors": ["Mealime", "Plan to Eat", "https://www.supercook.com"],
+    "difference": "Starts from leftovers, not from recipes.",
+    "priceTier": "mid"
+  },
+  "personality": {
+    "tone": ["warm", "practical", "playful"],
+    "archetype": "caregiver",
+    "avoid": ["diet", "guilt"]
+  },
+  "nameRules": {
+    "rulesets": ["coined", "compound"],
+    "overrides": { "maxLength": 10, "ban": ["chef"], "extraTlds": ["app"] },
+    "handles": ["instagram", "tiktok"]
+  },
+  "future": { "scope": "broad" },
+  "mode": { "type": "startup" }
+}
