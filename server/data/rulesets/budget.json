@@ -1,0 +1,29 @@
+{
+  "id": "budget",
+  "name": "Budget",
+  "description": "Any style, 4-15 letters, on low-cost TLDs. Scores low renewal price strongly; check the renewal price and TLD reputation before buying.",
+  "examples": ["Snapfern", "Bookly", "Pixelnest", "Tidy"],
+  "styles": [
+    { "style": "descriptive", "weight": 0.2 },
+    { "style": "compound", "weight": 0.2 },
+    { "style": "invented", "weight": 0.2 },
+    { "style": "metaphor", "weight": 0.2 },
+    { "style": "affix", "weight": 0.2 }
+  ],
+  "length": { "min": 4, "max": 15 },
+  "filters": { "hyphens": false, "numbers": false, "bannedPairs": [], "bannedWords": [] },
+  "tlds": {
+    "order": ["sbs", "site", "online", "store", "space", "lol", "bond", "xyz"],
+    "countryFirst": false,
+    "com": "none",
+    "affixes": []
+  },
+  "weights": {
+    "length": 0.5,
+    "say": 0.5,
+    "spell": 0.5,
+    "meaning": 0.5,
+    "uniqueness": 0.5,
+    "price": 1
+  }
+}

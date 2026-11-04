@@ -1,0 +1,28 @@
+{
+  "id": "coined",
+  "name": "Coined word",
+  "description": "An invented word with no fixed meaning, 4-8 letters, easy to say and spell. Alternative TLDs are fine.",
+  "examples": ["Kodak", "Zalando", "Vimeo", "Hulu"],
+  "styles": [{ "style": "invented", "weight": 0.8 }, { "style": "misspelling", "weight": 0.2 }],
+  "length": { "min": 4, "max": 8 },
+  "filters": {
+    "hyphens": false,
+    "numbers": false,
+    "bannedPairs": ["qx", "xq", "jq", "qj", "vq", "wq", "zx", "xz"],
+    "bannedWords": []
+  },
+  "tlds": {
+    "order": ["com", "io", "co", "app", "xyz"],
+    "countryFirst": false,
+    "com": "nice",
+    "affixes": ["get-", "try-"]
+  },
+  "weights": {
+    "length": 0.8,
+    "say": 1,
+    "spell": 0.8,
+    "meaning": 0.3,
+    "uniqueness": 1,
+    "price": 0.4
+  }
+}

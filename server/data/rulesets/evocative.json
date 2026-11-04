@@ -1,0 +1,23 @@
+{
+  "id": "evocative",
+  "name": "Evocative",
+  "description": "One real word that carries meaning by association, not description. .com is nice to have.",
+  "examples": ["Amazon", "Apple", "Oracle", "Slack"],
+  "styles": [{ "style": "metaphor", "weight": 0.9 }, { "style": "misspelling", "weight": 0.1 }],
+  "length": { "min": 4, "max": 10 },
+  "filters": { "hyphens": false, "numbers": false, "bannedPairs": [], "bannedWords": [] },
+  "tlds": {
+    "order": ["com", "co", "io", "ai"],
+    "countryFirst": false,
+    "com": "nice",
+    "affixes": ["get-", "try-", "-hq", "-app"]
+  },
+  "weights": {
+    "length": 0.6,
+    "say": 0.9,
+    "spell": 0.8,
+    "meaning": 1,
+    "uniqueness": 0.8,
+    "price": 0.3
+  }
+}

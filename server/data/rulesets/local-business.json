@@ -1,0 +1,26 @@
+{
+  "id": "local-business",
+  "name": "Local business",
+  "description": "Place plus service, so local customers know what and where. The target country's TLD comes first.",
+  "examples": ["BerlinPlumbing", "LondonDental", "AustinMovers"],
+  "styles": [
+    { "style": "place-service", "weight": 0.8 },
+    { "style": "descriptive", "weight": 0.2 }
+  ],
+  "length": { "min": 6, "max": 20 },
+  "filters": { "hyphens": true, "numbers": false, "bannedPairs": [], "bannedWords": [] },
+  "tlds": {
+    "order": ["com", "net"],
+    "countryFirst": true,
+    "com": "nice",
+    "affixes": ["-pro", "-co"]
+  },
+  "weights": {
+    "length": 0.5,
+    "say": 0.8,
+    "spell": 1,
+    "meaning": 1,
+    "uniqueness": 0.4,
+    "price": 0.5
+  }
+}

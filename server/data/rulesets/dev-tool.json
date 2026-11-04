@@ -1,0 +1,27 @@
+{
+  "id": "dev-tool",
+  "name": "Developer tool",
+  "description": "Lowercase, short, and easy to type in a terminal. Developer TLDs first: .dev, .sh, .io.",
+  "examples": ["vite", "deno", "bun", "turso"],
+  "styles": [
+    { "style": "compound", "weight": 0.4 },
+    { "style": "invented", "weight": 0.3 },
+    { "style": "descriptive", "weight": 0.3 }
+  ],
+  "length": { "min": 3, "max": 10 },
+  "filters": { "hyphens": false, "numbers": false, "bannedPairs": [], "bannedWords": [] },
+  "tlds": {
+    "order": ["dev", "sh", "io", "com"],
+    "countryFirst": false,
+    "com": "nice",
+    "affixes": ["get-", "use-", "-hq"]
+  },
+  "weights": {
+    "length": 1,
+    "say": 0.7,
+    "spell": 1,
+    "meaning": 0.5,
+    "uniqueness": 0.8,
+    "price": 0.3
+  }
+}
