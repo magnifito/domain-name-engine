@@ -132,6 +132,19 @@ describe('ProjectStore.get and list', () => {
     expect((await store.get(slug)).recoveredFromBackup).toBe(false);
   });
 
+  it('flags a project that was read from its backup in the listing', async () => {
+    const { store } = await setup();
+    const { project, paths } = await store.create(await loadBrief(), 'Good');
+    await store.addNotes(project.slug, []);
+    await writeFile(paths.projectFile, '{ broken');
+    const listing = await store.list();
+    expect(listing.projects[0]).toMatchObject({ slug: 'good', recoveredFromBackup: true });
+    await store.create(await loadBrief(), 'Fine');
+    expect((await store.list()).projects.find((p) => p.slug === 'fine')?.recoveredFromBackup).toBe(
+      false,
+    );
+  });
+
   it('rejects reserved device names as project slugs', async () => {
     const { store } = await setup();
     await expect(store.get('nul')).rejects.toThrow('"nul" is not a valid project slug.');

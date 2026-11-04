@@ -57,6 +57,8 @@ export interface ProjectSummary {
   rulesets: string[];
   names: number;
   shortlist: number;
+  /** True when project.json was unreadable and this summary comes from project.json.bak. */
+  recoveredFromBackup: boolean;
 }
 
 export interface ProjectListing {
@@ -117,7 +119,7 @@ function parseOrThrow<T>(schema: z.ZodType<T>, value: unknown, what: string): T 
   return parsed.data;
 }
 
-function summarize(project: Project): ProjectSummary {
+function summarize(project: Project, recoveredFromBackup: boolean): ProjectSummary {
   return {
     slug: project.slug,
     title: project.title,
@@ -127,6 +129,7 @@ function summarize(project: Project): ProjectSummary {
     rulesets: project.brief.data.nameRules.rulesets,
     names: project.names.length,
     shortlist: project.shortlist.length,
+    recoveredFromBackup,
   };
 }
 
@@ -248,7 +251,8 @@ export class ProjectStore {
     const invalid: ProjectListing['invalid'] = [];
     for (const slug of slugs.sort()) {
       try {
-        projects.push(summarize((await this.get(slug)).project));
+        const loaded = await this.get(slug);
+        projects.push(summarize(loaded.project, loaded.recoveredFromBackup));
       } catch (error) {
         if (!(error instanceof StoreError)) throw error;
         invalid.push({ slug, error: error.message });
