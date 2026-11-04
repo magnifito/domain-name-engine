@@ -1072,6 +1072,7 @@ git commit -m "feat(research): add profileDomain with registration, parking, and
 **Interfaces:**
 - Consumes: nothing.
 - Produces: `PLATFORMS = ['github', 'npm', 'pypi', 'reddit', 'youtube', 'x', 'instagram', 'tiktok', 'linkedin'] as const`; `type Platform`; `PLATFORM_RULES: Record<Platform, { pattern: RegExp; rule: string; normalize(h: string): string; profileUrl(h: string): string }>`; `type NormalizedHandle = { ok: true; handle: string } | { ok: false; reason: string }`; `normalizeHandle(platform: Platform, raw: string): NormalizedHandle`; `profileUrl(platform: Platform, handle: string): string`.
+- Contract: the `PLATFORMS` ids are lowercase and are exactly the platform ids Plan 2 lists for the brief field `nameRules.handles` (`github`, `npm`, `pypi`, `reddit`, `x`, `instagram`, `tiktok`, `youtube`, `linkedin`), so the research skill passes that field straight to `check_handles`. The `check_handles` input schema is `z.enum(PLATFORMS)`, so an upper-case or unknown id is rejected with a plain message.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3445,7 +3446,8 @@ git commit -m "test(live): add research tool smoke tests"
 - Create: `skills/research/SKILL.md`, `skills/language-check/SKILL.md`
 
 **Interfaces:**
-- Consumes (by MCP tool name, no imports): `check_domains` (Plan 1); `profile_domain`, `check_handles`, `search_trademarks` (Task 11); `project_list`, `project_get`, `project_add_checks`, `project_add_notes` (Plan 2). The competitor scan uses Claude's built-in WebSearch.
+- Consumes (by MCP tool name, no imports): `check_domains` (Plan 1); `profile_domain`, `check_handles`, `search_trademarks` (Task 11); `project_list`, `project_get`, `ruleset_get`, `project_add_checks`, `project_add_notes` (Plan 2).
+- Store contract (Plan 2, `docs/superpowers/plans/2026-11-04-plan-2-brief-rulesets-store.md`): `project_add_checks({ slug, checks: [{ name, kind, results }] })` with `kind` in `domain` | `profile` | `handle` | `trademark` | `competitor`. Merge rule: `domain` and `profile` replace by `domain`, `handle` by `platform`, and a new `trademark` or `competitor` batch replaces the whole earlier batch of that kind for the name. `project_add_notes({ slug, notes: [{ name, text, kind, language, severity }] })` with `kind: "language"`, `language` a BCP 47 code and `severity` `low` | `medium` | `high`. Brief paths: `subject.category`, `audience.countries`, `audience.languages`, `positioning.competitors`, `nameRules.handles` (lowercase platform ids), `nameRules.overrides.extraTlds`. The competitor scan uses Claude's built-in WebSearch.
 - Produces: skills named `research` and `language-check`, which Plan 2's `find-domain` calls by name.
 
 - [ ] **Step 1: Write the research skill**
@@ -3464,24 +3466,31 @@ Run full checks for every shortlisted name in one project and save the results. 
 ## Inputs
 
 1. If the user did not name a project, call `project_list` and ask which one.
-2. Call `project_get` for that project. Read from it:
-   - the shortlist (if it is empty, stop and ask the user to shortlist names first);
-   - the brief: category, target countries and languages, competitors, and which social handles matter;
-   - the rulesets and per-project overrides, for the TLD list of each name.
+2. Call `project_get` with the project's `slug`. Read from `project`:
+   - `shortlist` (labels). If it is empty, stop and ask the user to shortlist names first. Find each label's entry in `names[]` for its `name` and `rulesetId`.
+   - from `brief.data`: `subject.category`, `audience.countries`, `audience.languages`, `positioning.competitors`, `nameRules.handles`, and `nameRules.overrides.extraTlds`.
+3. Call `ruleset_get` once for each distinct `rulesetId`, and read its `tlds` (`com` and `order`).
 
 ## Steps
 
 Run the steps in this order. If a tool returns an error, report it in one line, skip that step for that name, and continue with the next step. Never retry a tool more than once.
 
-1. **Domains.** Call `check_domains` with the shortlisted names and the TLDs from their rulesets plus any extra TLDs in the overrides. Keep each call at 200 domains or fewer; split the call if needed.
-2. **Taken-domain profiles.** For each shortlisted name, take the `.com` result and the result for the first TLD of its ruleset. For each of those that is `registered`, call `profile_domain`. The verdict tells you whether the owner uses it (`live_site`), parks it (`parked`), sells it (`for_sale`), or has no site (`no_site`).
-3. **Handles.** Call `check_handles` with all shortlisted names. Pass `platforms` from the brief's list of handles that matter; if the brief has none, omit `platforms` to check all of them.
-4. **Trademarks.** Call `search_trademarks` once per name. Pass `niceClasses` only when you are confident which Nice classes cover the brief's category (for example 9 and 42 for software); otherwise omit it.
+1. **Domains.** Call `check_domains` with each shortlisted name on `.com` (unless the ruleset's `com` is `none`), every TLD in its ruleset's `tlds.order`, and every TLD in `extraTlds`. Keep each call at 200 domains or fewer; split the call if needed.
+2. **Taken-domain profiles.** For each shortlisted name, take the `.com` result and the result for the first TLD in its ruleset's `tlds.order`. For each of those that is `registered`, call `profile_domain`. The verdict tells you whether the owner uses it (`live_site`), parks it (`parked`), sells it (`for_sale`), or has no site (`no_site`).
+3. **Handles.** Call `check_handles` with all shortlisted names. The `platforms` ids are lowercase and are the same ids as `nameRules.handles`: `github`, `npm`, `pypi`, `reddit`, `youtube`, `x`, `instagram`, `tiktok`, `linkedin`. Pass the brief's `nameRules.handles`, lowercased. If an entry is not one of these ids, leave it out of the call and tell the user it cannot be checked. If the brief lists no handles, omit `platforms` to check all of them.
+4. **Trademarks.** Call `search_trademarks` once per name. Pass `niceClasses` only when you are confident which Nice classes cover `subject.category` (for example 9 and 42 for software); otherwise omit it.
 5. **Competitor scan.** Use your built-in WebSearch, not the MCP server. For each name run:
    - `"<name>" <category>` and `"<name>" company`, to find businesses already using the name;
-   - one search for the category in each target country, to find the main competitors and the domain patterns they use (for example `get<name>.com`, `<name>app.com`, `.io` instead of `.com`).
-   Record each finding with its URL. Do not open pages that block automated clients.
-6. **Save.** For each name, call `project_add_checks` with the results of steps 1-4 exactly as the tools returned them, and the competitor findings from step 5 with source `websearch` and the time you searched.
+   - one search for the category in each target country, to find the main competitors and the domain patterns they use (for example `get<name>.com`, `<name>app.com`, `.io` instead of `.com`). Start from `positioning.competitors` when the brief lists any.
+   Record each finding as one object: `{ "source": "websearch", "checkedAt": "<ISO 8601 time of the search>", "url": "<page URL>", "title": "<page or business name>", "finding": "<one line: same-name business, competitor, or domain pattern>" }`. Do not open pages that block automated clients.
+6. **Save.** Call `project_add_checks` with the project `slug` and one `checks` entry per name and kind. Each entry is `{ "name": "<shortlisted name>", "kind": "<kind>", "results": [ ... ] }`:
+   - kind `domain`: the `results` array of `check_domains` for that name's domains, exactly as returned;
+   - kind `profile`: the `profile` object of each `profile_domain` call for that name, exactly as returned;
+   - kind `handle`: the `results` items of `check_handles` whose `handle` is that name, exactly as returned;
+   - kind `trademark`: the complete set of `search_trademarks` results for that name, exactly as returned;
+   - kind `competitor`: the complete set of competitor findings for that name from step 5.
+
+   The store replaces the whole earlier `trademark` batch and the whole earlier `competitor` batch of a name with each new batch. So always send every trademark result and every competitor finding for that name in one entry, never only the new ones. If a step found nothing for a name, send an empty `results` array only when you mean to clear the earlier batch.
 
 ## Summary for the user
 
@@ -3517,7 +3526,7 @@ Review each shortlisted name in each target language of the brief and save the n
 ## Inputs
 
 1. If the user did not name a project, call `project_list` and ask which one.
-2. Call `project_get`. Read the shortlist and the brief's target countries and target languages. Always include English as well, because domains and app stores are read in English.
+2. Call `project_get` with the project's `slug`. Read `project.shortlist` (labels) and find each label's `name` in `project.names[]`. Read the target languages from `project.brief.data.audience.languages` (BCP 47 codes such as `en`, `de`, `pt-BR`) and the target countries from `audience.countries`. Always include English (`en`) as well, because domains and app stores are read in English.
 
 ## For each name and each language
 
@@ -3529,10 +3538,9 @@ Check these points and write one short line each:
 4. **Spelling from hearing.** If a native speaker hears it, would they spell it the same way? Note letters that sound alike in this language (for example c/k, ph/f, i/y).
 5. **Script and characters.** Does it work in the market's script? Note letters that do not exist in the language or need accents.
 
-Then give a risk level for the name in that language:
+Then give a risk level for the name in that language. The level is one of exactly three values, the same values the store accepts as `severity`:
 
-- `none`: no issues found;
-- `low`: a minor pronunciation or spelling issue;
+- `low`: no issues found, or only a minor pronunciation or spelling issue;
 - `medium`: an unclear meaning or a weak bad association;
 - `high`: a clear offensive or negative meaning, or a strong clash with a known brand.
 
@@ -3543,7 +3551,7 @@ Then give a risk level for the name in that language:
 
 ## Save and summarize
 
-1. For each name, call `project_add_notes` with one note per language: the language, the risk level, and the five lines above.
+1. Call `project_add_notes` with the project `slug` and one note per name and language: `{ "name": "<shortlisted name>", "kind": "language", "language": "<BCP 47 code>", "severity": "<low|medium|high>", "text": "<the five lines above>" }`. Always pass `kind: "language"` and set `severity` to the risk level; never leave it out. Keep `text` under 2000 characters.
 2. Show the user a table with one row per name and one column per language, where each cell is the risk level plus a few words. Below the table, list every `medium` and `high` finding in full.
 3. No emoji and no urgency copy.
 ```
@@ -3556,8 +3564,8 @@ Expected: validation passes and both skills are found. If the validator reports 
 - [ ] **Step 4: Run the eval prompt for each skill by hand**
 
 The spec asks for one eval prompt per skill, run by hand before each release. Run these after Plans 2 and 3 have both merged, because the skills need the `project_*` tools.
-- research: "Run the research skill on my project `<slug>`." Pass if: every shortlisted name gets a `check_domains` result; registered `.com` domains get a `profile_domain` verdict; manual platforms show a profile URL instead of a guess; the trademark section repeats that `no_matches` is not a clearance and lists all four links; the competitor scan cites URLs; nothing is called available without a tool result.
-- language-check: "Run language-check on project `<slug>` for German and Spanish." Pass if: there is one risk level per name and language; the summary starts with the AI-review disclaimer; an unclear language gives "not sure", not an invented meaning; notes are saved with `project_add_notes`.
+- research: "Run the research skill on my project `<slug>`." Pass if: every shortlisted name gets a `check_domains` result; registered `.com` domains get a `profile_domain` verdict; manual platforms show a profile URL instead of a guess; the trademark section repeats that `no_matches` is not a clearance and lists all four links; the competitor scan cites URLs and is saved as kind `competitor` with source `websearch`; each `trademark` and `competitor` entry holds the complete set for that name; nothing is called available without a tool result.
+- language-check: "Run language-check on project `<slug>` for German and Spanish." Pass if: there is one risk level (`low`, `medium` or `high`) per name and language; every saved note has `kind: "language"`, a BCP 47 `language` and that level as `severity`; the summary starts with the AI-review disclaimer; an unclear language gives "not sure", not an invented meaning; notes are saved with `project_add_notes`.
 
 - [ ] **Step 5: Commit**
 
@@ -3579,6 +3587,7 @@ git commit -m "feat(skills): add research and language-check skills"
 
 - **Profile TTL:** the spec lists no TTL for `profile_domain`. The plan uses 1 day (`PROFILE_TTL_MS`, local to `research/profile/profile.ts`, so `cache/ttl.ts` stays untouched), 1 hour for `not_registered`, and no caching for `unknown`.
 - **Profile statuses:** the spec lists `live_site`, `parked`, `for_sale` and `no_site`. The plan adds `not_registered` (the domain has no registration, so a profile verdict would mislead) and `unknown` (both registration and homepage failed, per the error-handling rule).
+- **Language risk levels:** the store's `severity` accepts only `low`, `medium` and `high`, so "no issues found" is saved as `low`.
 - **Handle statuses:** the spec gives none. The plan uses `taken`, `likely_available`, `unknown` and `invalid`, mirroring `check_domains` and never a plain "available".
 - **Reddit:** the spec lists Reddit as high confidence, but on 2026-11-04 Reddit answers 403 to all logged-out API requests, and new OAuth apps need approval. Reddit is high confidence only with `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`; otherwise it is `unknown` (manual).
 - **YouTube:** the spec lists it as low confidence. With the free `YOUTUBE_API_KEY` the official Data API gives a reliable answer; without the key it is `unknown` (manual).
@@ -3588,8 +3597,8 @@ git commit -m "feat(skills): add research and language-check skills"
 
 ## Cross-plan risks
 
-- **`check-domains.test.ts` fake:** once any plan extends `Runtime`, Plan 1's `fakeRuntime()` stops typechecking. Plans 2 and 4 must make the same one-line edit, `...({} as Runtime),` as the first property. If all three edits are byte-identical, git merges them cleanly; otherwise expect a trivial conflict.
+- **`check-domains.test.ts` fake:** once any plan extends `Runtime`, Plan 1's `fakeRuntime()` stops typechecking. Plan 2 adds exactly `...({} as Runtime),` as the first property of the returned object, and Task 10 adds the same line in the same place, so git merges the identical hunks cleanly. Plan 4 must add the same line.
 - **`runtime.ts` `extends` line:** all three plans edit `export interface Runtime extends …`. That is a guaranteed trivial conflict at merge. Resolve it to `extends StoreRuntime, ResearchRuntime, <Plan 4 part>`.
-- **`project_add_checks` and `project_add_notes` input shape (Plan 2):** the research skill saves raw tool results per name, grouped by tool (domains, profiles, handles, trademarks, competitors), and language-check saves one note per language. Plan 2's schemas must accept these payloads, or the skill texts need a small follow-up once Plan 2's schemas are known.
+- **Store contract (Plan 2):** the skills follow Plan 2's `project_add_checks` and `project_add_notes` contracts. Research sends the complete set of trademark results and competitor findings for a name on every call, because each new batch replaces the earlier one; competitor findings use kind `competitor` and source `websearch`. Language-check saves one note per name and language with `kind: "language"` and the risk level as `severity`. `PLATFORMS` ids equal Plan 2's `nameRules.handles` ids. If Plan 2 changes any of these, the skill texts change with it.
 - **README and key status (Plan 4):** Plan 4 owns the README and `registrar_status`. The README should document the optional research env vars above, and the fact that X, Instagram, TikTok, LinkedIn and USPTO are manual-check only.
 - **Live-test runtime:** `test/live/research.test.ts` hits GitHub's unauthenticated limit (60 per hour) only if it runs many times in a row; set `GITHUB_TOKEN` when iterating.
