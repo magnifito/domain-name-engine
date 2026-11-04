@@ -6,7 +6,7 @@ export const REPO_URL = 'https://github.com/magnifito/domain-name-engine';
 export const USER_AGENT = `domain-name-engine/${VERSION} (+${REPO_URL})`;
 
 export function engineHome(env: NodeJS.ProcessEnv = process.env): string {
-  return env.DOMAIN_ENGINE_HOME ?? join(homedir(), '.domain-engine');
+  return env.DOMAIN_ENGINE_HOME || join(homedir(), '.domain-engine');
 }
 
 export function enginePaths(home: string): {

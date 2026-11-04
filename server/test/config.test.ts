@@ -13,6 +13,10 @@ describe('config', () => {
     expect(engineHome({ DOMAIN_ENGINE_HOME: '/tmp/x' })).toBe('/tmp/x');
   });
 
+  it('falls back to the default when DOMAIN_ENGINE_HOME is empty', () => {
+    expect(engineHome({ DOMAIN_ENGINE_HOME: '' })).toBe(join(homedir(), '.domain-engine'));
+  });
+
   it('derives subfolders from the home', () => {
     expect(enginePaths('/h')).toEqual({
       home: '/h',
