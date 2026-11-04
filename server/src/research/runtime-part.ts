@@ -1,6 +1,6 @@
 import { resolveNs as dnsResolveNs } from 'node:dns/promises';
 import type { DiskCache } from '../cache/cache.js';
-import { createHttp, type HttpFetch } from '../http/http.js';
+import type { HttpFetch } from '../http/http.js';
 import type { HostLimiter } from '../limiter/limiter.js';
 import { type RdapServers, rdapLookup } from '../sources/rdap.js';
 import { type WhoisQuery, whoisLookup } from '../sources/whois.js';
@@ -9,6 +9,7 @@ import type { Platform } from './handles/platforms.js';
 import { readResearchKeys } from './keys.js';
 import { fetchHomepage } from './profile/homepage.js';
 import { type DomainProfile, profileDomain } from './profile/profile.js';
+import { createGuardedHttp, type GuardOptions } from './profile/safe-fetch.js';
 import { createEuipoClient } from './trademarks/euipo.js';
 import {
   searchTrademarks,
@@ -30,16 +31,16 @@ export interface ResearchRuntimeDeps {
   rdapServers: () => Promise<RdapServers>;
   whoisQuery: WhoisQuery;
   resolveNs?: (domain: string) => Promise<string[]>;
-  /** Test seam for the homepage request. */
-  homepageFetch?: typeof fetch;
+  /** Test seam for the homepage request: DNS resolver and transport. */
+  homepage?: Pick<GuardOptions, 'resolve' | 'transport'>;
 }
 
 export function createResearchRuntime(deps: ResearchRuntimeDeps): ResearchRuntime {
   const { http, limiter, cache } = deps;
   const keys = readResearchKeys(deps.env);
   const resolveNs = deps.resolveNs ?? dnsResolveNs;
-  // A homepage that refuses automated access must not be asked again: one try, shared limiter.
-  const homepageHttp = createHttp({ limiter, maxTries: 1, fetchImpl: deps.homepageFetch });
+  // Homepages are untrusted URLs: vetted addresses only, pinned, no retries, shared limiter.
+  const homepageHttp = createGuardedHttp({ limiter, ...deps.homepage });
   const checkers = createCheckers(http, keys);
   const euipo = keys.euipo ? createEuipoClient(http, keys.euipo) : undefined;
 

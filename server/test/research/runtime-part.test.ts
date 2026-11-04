@@ -11,6 +11,8 @@ import {
 } from '../../src/research/runtime-part.js';
 import googleRecord from '../fixtures/rdap-domain-google.json' with { type: 'json' };
 
+const PUBLIC_ADDRESS = [{ address: '93.184.216.34', family: 4 }];
+
 function routeHttp(routes: Record<string, () => Response>): { http: HttpFetch; urls: string[] } {
   const urls: string[] = [];
   const http: HttpFetch = async (url) => {
@@ -47,11 +49,14 @@ describe('createResearchRuntime', () => {
       'https://rdap.verisign.com/com/v1/domain/google.com': () => Response.json(googleRecord),
     });
     const homepageUrls: string[] = [];
-    const homepageFetch = (async (url: string) => {
-      homepageUrls.push(url);
-      return new Response('<title>Google</title>', { headers: { 'content-type': 'text/html' } });
-    }) as unknown as typeof fetch;
-    const profile = await (await runtime(http, {}, { homepageFetch })).profileDomain('google.com');
+    const homepage = {
+      resolve: async () => PUBLIC_ADDRESS,
+      transport: async ({ url }: { url: URL }) => {
+        homepageUrls.push(url.href);
+        return new Response('<title>Google</title>', { headers: { 'content-type': 'text/html' } });
+      },
+    };
+    const profile = await (await runtime(http, {}, { homepage })).profileDomain('google.com');
     expect(profile).toMatchObject({ status: 'live_site', homepage: { title: 'Google' } });
     expect(urls).toHaveLength(1);
     expect(homepageUrls).toEqual(['https://google.com/']);
@@ -88,11 +93,14 @@ describe('createResearchRuntime', () => {
       'https://rdap.verisign.com/com/v1/domain/acme.com': () => Response.json(googleRecord),
     });
     let gets = 0;
-    const homepageFetch = (async () => {
-      gets++;
-      return new Response('slow down', { status: 429 });
-    }) as unknown as typeof fetch;
-    const rt = await runtime(http, {}, { homepageFetch });
+    const homepage = {
+      resolve: async () => PUBLIC_ADDRESS,
+      transport: async () => {
+        gets++;
+        return new Response('slow down', { status: 429 });
+      },
+    };
+    const rt = await runtime(http, {}, { homepage });
     const profile = await rt.profileDomain('acme.com');
     expect(profile.status).toBe('live_site');
     expect(gets).toBe(1);

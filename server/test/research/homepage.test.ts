@@ -6,6 +6,7 @@ import {
   fetchHomepage,
   readCapped,
 } from '../../src/research/profile/homepage.js';
+import { BlockedError } from '../../src/research/profile/safe-fetch.js';
 
 function html(body: string, status = 200): Response {
   return new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8' } });
@@ -116,5 +117,69 @@ describe('fetchHomepage', () => {
       'http://acme.com/': new Error('ENOTFOUND'),
     });
     expect(await fetchHomepage('acme.com', http)).toEqual({ kind: 'error', reason: 'ENOTFOUND' });
+  });
+
+  const redirect = (location: string, status = 302): Response =>
+    new Response(null, { status, headers: { location } });
+
+  it('follows a public redirect manually and reports the final URL', async () => {
+    const { http, urls } = routeHttp({
+      'https://acme.com/': redirect('https://www.acme.com/home'),
+      'https://www.acme.com/home': html('<title>Acme Home</title>'),
+    });
+    expect(await fetchHomepage('acme.com', http)).toMatchObject({
+      kind: 'ok',
+      url: 'https://acme.com/',
+      finalUrl: 'https://www.acme.com/home',
+      httpStatus: 200,
+      title: 'Acme Home',
+    });
+    expect(urls).toEqual(['https://acme.com/', 'https://www.acme.com/home']);
+  });
+
+  it('asks the fetcher not to follow redirects itself', async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const http: HttpFetch = async (_url, init) => {
+      inits.push(init);
+      return html('<title>Acme</title>');
+    };
+    await fetchHomepage('acme.com', http);
+    expect(inits[0]?.redirect).toBe('manual');
+  });
+
+  it('reports a blocked redirect target and does not fall back to http', async () => {
+    const urls: string[] = [];
+    const http: HttpFetch = async (url) => {
+      urls.push(url);
+      if (url === 'https://acme.com/') return redirect('http://127.0.0.1/admin');
+      throw new BlockedError('127.0.0.1', 'resolves to a private or reserved address');
+    };
+    expect(await fetchHomepage('acme.com', http)).toEqual({
+      kind: 'error',
+      reason: 'blocked: redirect to 127.0.0.1 resolves to a private or reserved address',
+    });
+    expect(urls).toEqual(['https://acme.com/', 'http://127.0.0.1/admin']);
+  });
+
+  it('reports a blocked start host without the redirect wording', async () => {
+    const http: HttpFetch = async () => {
+      throw new BlockedError('acme.com', 'resolves to a private or reserved address');
+    };
+    expect(await fetchHomepage('acme.com', http)).toEqual({
+      kind: 'error',
+      reason: 'blocked: acme.com resolves to a private or reserved address',
+    });
+  });
+
+  it('gives up after 5 redirects', async () => {
+    const urls: string[] = [];
+    const http: HttpFetch = async (url) => {
+      urls.push(url);
+      return redirect(`https://acme.com/${urls.length}`);
+    };
+    const result = await fetchHomepage('acme.com', http);
+    expect(result).toMatchObject({ kind: 'error' });
+    expect(result.kind === 'error' && result.reason).toContain('redirect');
+    expect(urls.filter((u) => u.startsWith('https://'))).toHaveLength(6);
   });
 });

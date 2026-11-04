@@ -1,5 +1,6 @@
 import type { HttpFetch } from '../../http/http.js';
 import { errorMessage } from '../../util/errors.js';
+import { BlockedError } from './safe-fetch.js';
 
 export interface PageSignals {
   title?: string;
@@ -99,19 +100,59 @@ export async function readCapped(res: Response, limit = MAX_BODY_BYTES): Promise
   return new TextDecoder().decode(Buffer.concat(chunks).subarray(0, limit));
 }
 
-/** One GET of the homepage: https first, http only when https fails at the network level. */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+export const MAX_REDIRECTS = 5;
+
+class TooManyRedirects extends Error {}
+
+/** Follows redirects by hand so the fetcher can vet every hop. */
+async function getFollowing(
+  start: string,
+  http: HttpFetch,
+): Promise<{ res: Response; finalUrl: string }> {
+  let url = start;
+  for (let hop = 0; ; hop++) {
+    let res: Response;
+    try {
+      res = await http(url, {
+        redirect: 'manual',
+        headers: { accept: 'text/html,application/xhtml+xml' },
+      });
+    } catch (error) {
+      if (error instanceof BlockedError && hop > 0) {
+        throw new BlockedError(`redirect to ${error.host}`, error.detail);
+      }
+      throw error;
+    }
+    const location = res.headers.get('location');
+    if (!REDIRECT_STATUSES.has(res.status) || !location) return { res, finalUrl: url };
+    void res.body?.cancel().catch(() => undefined);
+    if (hop >= MAX_REDIRECTS) throw new TooManyRedirects(`more than ${MAX_REDIRECTS} redirects`);
+    url = new URL(location, url).href;
+  }
+}
+
+/**
+ * One homepage request per scheme: https first, http only when https fails at the network level.
+ * `http` must refuse private targets (see createGuardedHttp) and must not follow redirects itself.
+ */
 export async function fetchHomepage(domain: string, http: HttpFetch): Promise<HomepageResult> {
   let reason = 'no response';
   for (const url of [`https://${domain}/`, `http://${domain}/`]) {
     try {
-      const res = await http(url, { headers: { accept: 'text/html,application/xhtml+xml' } });
-      const finalUrl = res.url || url;
+      const { res, finalUrl } = await getFollowing(url, http);
       const isHtml = (res.headers.get('content-type') ?? '').toLowerCase().includes('html');
       let html = '';
       if (isHtml) html = await readCapped(res);
       else void res.body?.cancel().catch(() => undefined);
       return { kind: 'ok', url, finalUrl, httpStatus: res.status, ...analyzePage(html, finalUrl) };
     } catch (error) {
+      if (error instanceof BlockedError || error instanceof TooManyRedirects) {
+        return {
+          kind: 'error',
+          reason: error instanceof BlockedError ? error.message : `redirect loop: ${error.message}`,
+        };
+      }
       reason = errorMessage(error);
     }
   }
