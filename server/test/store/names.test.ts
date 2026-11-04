@@ -30,4 +30,10 @@ describe('nameLabel', () => {
   it('rejects names that cannot be a label', () => {
     expect(() => nameLabel('a!b')).toThrow(ValidationError);
   });
+
+  it('avoids Windows reserved device names', () => {
+    expect(slugify('Con')).toBe('con-project');
+    expect(slugify('COM1')).toBe('com1-project');
+    expect(slugify('Console')).toBe('console');
+  });
 });

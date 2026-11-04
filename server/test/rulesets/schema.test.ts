@@ -124,6 +124,13 @@ describe('RulesetSchema', () => {
     );
   });
 
+  it('rejects Windows reserved device names as ids', () => {
+    for (const id of ['con', 'nul', 'com1', 'lpt9', 'aux', 'prn']) {
+      expect(issues({ ...coined(), id }), id).not.toEqual([]);
+    }
+    expect(issues({ ...coined(), id: 'console' })).toEqual([]);
+  });
+
   it('rejects all-zero score weights', () => {
     const weights = { length: 0, say: 0, spell: 0, meaning: 0, uniqueness: 0, price: 0 };
     expect(issues({ ...coined(), weights })).toContain(

@@ -1,4 +1,5 @@
 import { normalizeLabel } from '../domain/name.js';
+import { isReservedDeviceName } from './fs-utils.js';
 
 const SLUG_MAX = 40;
 
@@ -16,7 +17,8 @@ export function slugify(title: string): string {
     const cut = slug.slice(0, SLUG_MAX + 1).lastIndexOf('-');
     slug = slug.slice(0, cut > 0 ? cut : SLUG_MAX).replace(/-+$/, '');
   }
-  return slug || 'project';
+  if (!slug) return 'project';
+  return isReservedDeviceName(slug) ? `${slug}-project` : slug;
 }
 
 /** Domain label for a display name: "Blue Fern" -> "bluefern". Throws ValidationError. */

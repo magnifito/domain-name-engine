@@ -21,3 +21,10 @@ export async function fileExists(path: string): Promise<boolean> {
     throw error;
   }
 }
+
+const RESERVED_DEVICE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+/** True for Windows reserved device names, which cannot be used as file or folder names there. */
+export function isReservedDeviceName(name: string): boolean {
+  return RESERVED_DEVICE.test(name);
+}

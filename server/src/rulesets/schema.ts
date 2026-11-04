@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { normalizeTld, ValidationError } from '../domain/name.js';
+import { isReservedDeviceName } from '../store/fs-utils.js';
 
 export const RULESET_ID = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 export const RULESET_SCHEMA_VERSION = 1;
@@ -32,6 +33,9 @@ export const RulesetIdSchema = z
 export const SelectableRulesetIdSchema = RulesetIdSchema.refine(
   (id) => id !== 'user',
   '"user" is reserved for names the user supplied; choose another ruleset id.',
+).refine(
+  (id) => !isReservedDeviceName(id),
+  'This id is a reserved device name on Windows; choose another ruleset id.',
 );
 
 function isCanonicalTld(value: string): boolean {

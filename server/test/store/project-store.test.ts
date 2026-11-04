@@ -132,6 +132,11 @@ describe('ProjectStore.get and list', () => {
     expect((await store.get(slug)).recoveredFromBackup).toBe(false);
   });
 
+  it('rejects reserved device names as project slugs', async () => {
+    const { store } = await setup();
+    await expect(store.get('nul')).rejects.toThrow('"nul" is not a valid project slug.');
+  });
+
   it('lists projects newest first and reports unreadable ones', async () => {
     const { store, dir } = await setup();
     await store.create(await loadBrief(), 'First');

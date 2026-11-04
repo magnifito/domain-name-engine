@@ -6,7 +6,7 @@ import type { NameStyle, Weights } from '../rulesets/schema.js';
 import { computeScore, EQUAL_WEIGHTS, type ScoreParts } from '../rulesets/score.js';
 import { BriefSchema } from './brief.js';
 import { StoreError, zodMessage } from './errors.js';
-import { isExists, isNotFound } from './fs-utils.js';
+import { isExists, isNotFound, isReservedDeviceName } from './fs-utils.js';
 import { readJsonWithBackup, writeJsonWithBackup } from './json-file.js';
 import { nameLabel, slugify } from './names.js';
 import {
@@ -214,7 +214,8 @@ export class ProjectStore {
   }
 
   async get(slug: string): Promise<LoadedProject> {
-    if (!SLUG.test(slug)) throw new StoreError(`"${slug}" is not a valid project slug.`);
+    if (!SLUG.test(slug) || isReservedDeviceName(slug))
+      throw new StoreError(`"${slug}" is not a valid project slug.`);
     const paths = this.paths(slug);
     try {
       const read = await readJsonWithBackup(paths.projectFile, parseProject);
