@@ -11,4 +11,8 @@ describe('research skill text', () => {
     expect(skill).toMatch(/match .* by (?:the )?label/i);
     expect(skill).toMatch(/display name.*search_trademarks/is);
   });
+
+  it('requires a full ISO timestamp for competitor findings (M5)', () => {
+    expect(skill).toMatch(/full ISO 8601 timestamp with a `Z` or an offset/);
+  });
 });
