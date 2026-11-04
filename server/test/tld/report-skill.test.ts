@@ -85,4 +85,8 @@ describe('report skill', () => {
     expect(text).toContain('not listed by <source> on <date>');
     expect(text).toContain('not proof');
   });
+
+  it('sorts names without a score last (M7)', async () => {
+    expect(await read('SKILL.md')).toContain('A name with a null or missing `score` sorts last');
+  });
 });

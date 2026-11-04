@@ -21,7 +21,7 @@ Ranks the shortlisted names of one project and writes `report.md` into the proje
 3. **Rank the shortlist.** Order the names by these keys, in order:
    1. Has at least one domain whose `check_domains` status is `likely_available`.
    2. Fewest risks: a trademark result with possible conflicts, a language note with severity `high` or `medium`, or a taken-domain profile that shows an active business in the same niche.
-   3. Higher `score` from the project.
+   3. Higher `score` from the project. A name with a null or missing `score` sorts last within its group; never treat it as zero.
    Give each name a one-sentence reason for its place, built only from the project data.
 4. **Collect the domains to price.** For each shortlisted name, take every domain whose stored `check_domains` status is `likely_available`. Price only those. Domains with any other status go in the "Not available or unknown" list with their status, source, and `checkedAt`.
 5. **Get TLD facts.** Call `tld_info` once per distinct TLD in that list.
