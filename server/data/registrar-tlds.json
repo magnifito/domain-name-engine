@@ -4,17 +4,31 @@
     "spaceship": {
       "coverage": "partial",
       "notSold": [],
+      "notListed": [],
       "note": "Seed rows: first-year prices for 8 low-cost TLDs recorded from spaceship.com on 2026-11-04. Renewal prices stay unknown until the first refresh with API keys."
     },
     "namecheap": {
       "coverage": "partial",
       "notSold": [],
+      "notListed": [],
       "note": "Seed rows without verified prices. The first refresh with API keys fills them from namecheap.users.getPricing."
     },
     "cloudflare": {
       "coverage": "partial",
-      "notSold": ["bond", "sbs"],
-      "note": "Seed rows from cfdomainpricing.com/prices.json, a free third-party list of Cloudflare Registrar prices in USD. That file has no .bond or .sbs entry. Run refresh:tlds to load every TLD."
+      "notSold": [],
+      "notListed": [
+        {
+          "tld": "bond",
+          "source": "cfdomainpricing.com/prices.json",
+          "checkedAt": "2026-11-04"
+        },
+        {
+          "tld": "sbs",
+          "source": "cfdomainpricing.com/prices.json",
+          "checkedAt": "2026-11-04"
+        }
+      ],
+      "note": "Seed rows from cfdomainpricing.com/prices.json, a free third-party list of Cloudflare Registrar prices in USD. That file has no .bond or .sbs entry, which does not prove Cloudflare does not sell them. Run refresh:tlds to load every TLD."
     }
   },
   "rows": [

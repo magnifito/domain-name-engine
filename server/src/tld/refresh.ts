@@ -26,6 +26,11 @@ export function mergeTable(current: RegistrarTable, fetched: FetchedRegistrar[])
     registrars[f.registrar] = {
       coverage: 'full',
       notSold: [],
+      notListed: [],
+      fullList: {
+        source: f.rows[0]?.source ?? 'the registrar',
+        checkedAt: f.rows[0]?.checkedAt ?? '1970-01-01',
+      },
       note: `Full list from ${f.rows[0]?.source ?? 'the registrar'}, refreshed by refresh:tlds.`,
     };
   }

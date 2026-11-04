@@ -24,7 +24,7 @@ Ruleset: <rulesetId>. <strategy, when present>. <rationale, when present>
 
 | Registrar | Sells TLD | First year | Renewal | 3-year total | Currency | Price label |
 |---|---|---|---|---|---|---|
-| Spaceship | <listed / not sold / unknown> | <amount or unknown> | <amount or unknown> | <amount or unknown> | <code or unknown> | <priceLabel> |
+| Spaceship | <listed / unverified / not sold / not listed by <source> on <date> / unknown> | <amount or unknown> | <amount or unknown> | <amount or unknown> | <code or unknown> | <priceLabel> |
 | Namecheap | ... | ... | ... | ... | ... | ... |
 | Cloudflare | ... | ... | ... | ... | ... | ... |
 

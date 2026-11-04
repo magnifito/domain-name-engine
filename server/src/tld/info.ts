@@ -15,8 +15,9 @@ import {
 } from './schema.js';
 import type { TldTables } from './table.js';
 
-/** listed: the table has a verified row. unverified: a row exists but its price is not verified. not_sold: a source confirms the registrar does not sell it. */
-export type SaleStatus = 'listed' | 'unverified' | 'not_sold' | 'not_in_table';
+/** listed: the table has a verified row. unverified: a row exists but its price is not verified. not_sold: a source confirms the registrar does not sell it.
+ * not_listed: the TLD is missing from a source's list (not proof that it is not sold). */
+export type SaleStatus = 'listed' | 'unverified' | 'not_sold' | 'not_listed' | 'not_in_table';
 
 export interface TldRegistrarEntry {
   registrar: RegistrarId;
@@ -71,8 +72,17 @@ function registrarEntry(tld: string, registrar: RegistrarId, tables: TldTables):
   const meta = tables.registrars.registrars[registrar];
   const row = tables.registrars.rows.find((r) => r.registrar === registrar && r.tld === tld);
   if (!row) {
-    if (meta.coverage === 'full' || meta.notSold.includes(tld)) {
+    if (meta.notSold.includes(tld)) {
       return emptyEntry(registrar, 'not_sold', `not sold by ${REGISTRAR_NAMES[registrar]}`);
+    }
+    const listed = meta.notListed.find((n) => n.tld === tld);
+    const list = listed ?? (meta.coverage === 'full' ? meta.fullList : undefined);
+    if (list) {
+      return {
+        ...emptyEntry(registrar, 'not_listed', `not listed by ${list.source} on ${list.checkedAt}`),
+        source: list.source,
+        checkedAt: list.checkedAt,
+      };
     }
     return emptyEntry(registrar, 'not_in_table', `${UNKNOWN} — not in the bundled table`);
   }

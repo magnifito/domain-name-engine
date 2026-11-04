@@ -42,10 +42,13 @@ describe('bundled registrar-tlds.json', () => {
     for (const registrar of ['spaceship', 'namecheap', 'cloudflare'] as const) {
       for (const tld of LOW_COST) {
         const listed = rows.some((r) => r.registrar === registrar && r.tld === tld);
-        // With full coverage a missing row already means "not sold".
+        // With full coverage a missing row means "not listed by the source".
         const meta = registrars[registrar];
-        const notSold = meta.coverage === 'full' || meta.notSold.includes(tld);
-        expect(listed || notSold, `${registrar} .${tld}`).toBe(true);
+        const known =
+          meta.coverage === 'full' ||
+          meta.notSold.includes(tld) ||
+          meta.notListed.some((n) => n.tld === tld);
+        expect(listed || known, `${registrar} .${tld}`).toBe(true);
       }
     }
   });
@@ -93,6 +96,23 @@ describe('schemas', () => {
   it('rejects an unknown registrar and a leading dot', () => {
     expect(() => PriceRowSchema.parse({ ...base, registrar: 'godaddy' })).toThrow();
     expect(() => PriceRowSchema.parse({ ...base, tld: '.site' })).toThrow();
+  });
+
+  it('rejects full coverage without a fullList source', () => {
+    const meta = { coverage: 'partial', notSold: [], note: 'n' };
+    expect(() =>
+      RegistrarTableSchema.parse({
+        schemaVersion: 1,
+        registrars: { spaceship: { ...meta, coverage: 'full' }, namecheap: meta, cloudflare: meta },
+        rows: [],
+      }),
+    ).toThrow('full coverage needs fullList');
+  });
+
+  it('keeps Cloudflare bond and sbs out of notSold (only listed as not listed by the source)', () => {
+    const { cloudflare } = bundledTables().registrars.registrars;
+    expect(cloudflare.notSold).toEqual([]);
+    expect(cloudflare.notListed.map((n) => n.tld).sort()).toEqual(['bond', 'sbs']);
   });
 
   it('rejects duplicate registrar × TLD rows', () => {

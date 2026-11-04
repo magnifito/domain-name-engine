@@ -19,9 +19,15 @@ export function testTables(): TldTables {
     registrars: {
       schemaVersion: 1,
       registrars: {
-        spaceship: { coverage: 'partial', notSold: [], note: 'test' },
-        namecheap: { coverage: 'partial', notSold: [], note: 'test' },
-        cloudflare: { coverage: 'full', notSold: [], note: 'test' },
+        spaceship: { coverage: 'partial', notSold: [], notListed: [], note: 'test' },
+        namecheap: { coverage: 'partial', notSold: [], notListed: [], note: 'test' },
+        cloudflare: {
+          coverage: 'full',
+          notSold: [],
+          notListed: [],
+          fullList: { source: 'cfdomainpricing.com/prices.json', checkedAt: '2026-10-13' },
+          note: 'test',
+        },
       },
       rows: [
         row({

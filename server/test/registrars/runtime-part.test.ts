@@ -54,7 +54,7 @@ describe('createRegistrarRuntime', () => {
     const d = await deps({});
     const rt = createRegistrarRuntime({ http: d.http, cache: d.cache, env: {} });
     expect(rt.tldInfo('sbs').registrars.find((r) => r.registrar === 'cloudflare')?.sale).toBe(
-      'not_sold',
+      'not_listed',
     );
   });
 });

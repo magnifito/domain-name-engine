@@ -48,14 +48,27 @@ export const PriceRowSchema = z
   });
 export type PriceRow = z.infer<typeof PriceRowSchema>;
 
-export const RegistrarMetaSchema = z.strictObject({
-  // full: a TLD missing for this registrar means it is not sold.
-  // partial: a missing TLD means the table has no data for it.
-  coverage: z.enum(['full', 'partial']),
-  // TLDs a source confirmed this registrar does not sell (used with partial coverage).
-  notSold: z.array(TLD),
-  note: z.string().min(1),
-});
+export const RegistrarMetaSchema = z
+  .strictObject({
+    // full: the rows come from the registrar's complete list; a missing TLD is "not listed by
+    // that source", which is not proof that the registrar does not sell it.
+    // partial: a missing TLD means the table has no data for it.
+    coverage: z.enum(['full', 'partial']),
+    // TLDs a source explicitly confirmed this registrar does not sell.
+    notSold: z.array(TLD),
+    // TLDs missing from a source's list, with that source and the date. Inferred, not confirmed.
+    notListed: z
+      .array(z.strictObject({ tld: TLD, source: z.string().min(1), checkedAt: ISO_DATE }))
+      .default([]),
+    // The source and date of the complete list behind a full coverage.
+    fullList: z.strictObject({ source: z.string().min(1), checkedAt: ISO_DATE }).optional(),
+    note: z.string().min(1),
+  })
+  .superRefine((meta, ctx) => {
+    if (meta.coverage === 'full' && !meta.fullList) {
+      ctx.addIssue({ code: 'custom', message: 'full coverage needs fullList' });
+    }
+  });
 export type RegistrarMeta = z.infer<typeof RegistrarMetaSchema>;
 
 export const RegistrarTableSchema = z

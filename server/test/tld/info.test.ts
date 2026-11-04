@@ -74,17 +74,33 @@ describe('tldInfo', () => {
     ]);
   });
 
-  it('separates "not sold" (full coverage) from "not in table" (partial coverage)', () => {
+  it('separates "not listed by source" (full coverage) from "not in table" (partial coverage)', () => {
     const info = tldInfo('io', testTables());
     expect(info.registrars.map((r) => [r.registrar, r.sale, r.priceLabel])).toEqual([
       ['spaceship', 'not_in_table', 'unknown — not in the bundled table'],
       ['namecheap', 'not_in_table', 'unknown — not in the bundled table'],
-      ['cloudflare', 'not_sold', 'not sold by Cloudflare'],
+      ['cloudflare', 'not_listed', 'not listed by cfdomainpricing.com/prices.json on 2026-10-13'],
     ]);
     expect(info.reputation).toBeNull();
   });
 
-  it('uses notSold for a partial-coverage registrar', () => {
+  it('uses an explicit notListed entry with its source and date', () => {
+    const tables = testTables();
+    tables.registrars.registrars.spaceship.notListed.push({
+      tld: 'io',
+      source: 'Spaceship price list',
+      checkedAt: '2026-11-04',
+    });
+    const entry = tldInfo('io', tables).registrars[0];
+    expect(entry).toMatchObject({
+      sale: 'not_listed',
+      source: 'Spaceship price list',
+      checkedAt: '2026-11-04',
+      priceLabel: 'not listed by Spaceship price list on 2026-11-04',
+    });
+  });
+
+  it('uses notSold only for an explicit confirmation', () => {
     const tables = testTables();
     tables.registrars.registrars.spaceship.notSold.push('io');
     expect(tldInfo('io', tables).registrars[0]?.sale).toBe('not_sold');

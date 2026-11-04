@@ -79,4 +79,10 @@ describe('report skill', () => {
     const text = await read('SKILL.md');
     expect(text).toContain('A live `availability` of `unknown` never changes the stored check');
   });
+
+  it('words an inferred absence as "not listed by <source> on <date>"', async () => {
+    const text = await read('SKILL.md');
+    expect(text).toContain('not listed by <source> on <date>');
+    expect(text).toContain('not proof');
+  });
 });
