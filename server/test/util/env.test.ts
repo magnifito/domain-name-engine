@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: these tests use literal unexpanded ${VAR} placeholders on purpose.
 import { describe, expect, it } from 'vitest';
 import { engineHome } from '../../src/config.js';
 import { readResearchKeys } from '../../src/research/keys.js';
