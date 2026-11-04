@@ -102,6 +102,25 @@ describe('Namecheap client', () => {
     expect(calls.filter((c) => c.url.includes('getPricing'))).toHaveLength(2);
   });
 
+  it('prices 20 domains with at most 2 pricing calls and no per-TLD ProductName (I3)', async () => {
+    const domains = Array.from({ length: 20 }, (_, i) => `name${i}.tld${i}`);
+    const checkXml = `<?xml version="1.0"?><ApiResponse xmlns="http://api.namecheap.com/xml.response" Status="OK"><Errors /><CommandResponse Type="namecheap.domains.check">${domains
+      .map(
+        (d) =>
+          `<DomainCheckResult Domain="${d}" Available="true" ErrorNo="0" Description="" IsPremiumName="false" PremiumRegistrationPrice="0" PremiumRenewalPrice="0" />`,
+      )
+      .join('')}</CommandResponse></ApiResponse>`;
+    const { client, calls } = await setup([
+      [CHECK, () => new Response(checkXml)],
+      [`${PRICING}&ActionName=REGISTER`, xml('namecheap-pricing-site-register.xml')],
+      [`${PRICING}&ActionName=RENEW`, xml('namecheap-pricing-site-renew.xml')],
+    ]);
+    await client.quote(domains);
+    const pricing = calls.filter((c) => c.url.includes('getPricing'));
+    expect(pricing.length).toBeLessThanOrEqual(2);
+    for (const c of pricing) expect(c.url).not.toContain('ProductName');
+  });
+
   it('throws on an API error without the key in the message', async () => {
     const { client } = await setup([[NAMECHEAP_API, xml('namecheap-error.xml')]]);
     const error = await client.quote(['zentrova.site']).catch((e: Error) => e);

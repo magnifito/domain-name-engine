@@ -1,5 +1,4 @@
 import type { DiskCache } from '../cache/cache.js';
-import { TTL } from '../cache/ttl.js';
 import type { HttpFetch } from '../http/http.js';
 import type { PriceRow } from '../tld/schema.js';
 import type { NamecheapCreds } from './credentials.js';
@@ -154,6 +153,9 @@ async function call(
   return xml;
 }
 
+/** The full TLD price list changes rarely; it is cached for a day. */
+const PRICE_LIST_TTL = 24 * 60 * 60 * 1000;
+
 export interface NamecheapDeps extends ClientDeps {
   cache: DiskCache;
 }
@@ -161,22 +163,26 @@ export interface NamecheapDeps extends ClientDeps {
 export function createNamecheapClient(creds: NamecheapCreds, deps: NamecheapDeps): LiveClient {
   const now = deps.now ?? (() => new Date());
 
-  async function tldPrice(
-    tld: string,
-    action: 'REGISTER' | 'RENEW',
-  ): Promise<NamecheapPrice | null> {
-    const key = `namecheap-price:${action}:${tld}`;
-    const cached = await deps.cache.get<NamecheapPrice | null>(key);
+  // One call per action returns the prices of every TLD, so a quote never needs one call per TLD.
+  async function allPrices(action: 'REGISTER' | 'RENEW'): Promise<NamecheapPrice[]> {
+    const key = `namecheap-prices:${action}`;
+    const cached = await deps.cache.get<NamecheapPrice[]>(key);
     if (cached !== undefined) return cached;
     const xml = await call(deps.http, creds, 'namecheap.users.getPricing', {
       ProductType: 'DOMAIN',
       ProductCategory: 'DOMAINS',
       ActionName: action,
-      ProductName: tld.toUpperCase(),
     });
-    const price = parseNamecheapPricing(xml).find((p) => p.product === tld) ?? null;
-    await deps.cache.set(key, price, TTL.registrarLive).catch(() => undefined);
-    return price;
+    const prices = parseNamecheapPricing(xml);
+    await deps.cache.set(key, prices, PRICE_LIST_TTL).catch(() => undefined);
+    return prices;
+  }
+
+  async function tldPrice(
+    tld: string,
+    action: 'REGISTER' | 'RENEW',
+  ): Promise<NamecheapPrice | null> {
+    return (await allPrices(action)).find((p) => p.product === tld) ?? null;
   }
 
   return {
