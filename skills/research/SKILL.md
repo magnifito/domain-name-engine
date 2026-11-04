@@ -31,10 +31,10 @@ Run the steps in this order. If a tool returns an error, report it in one line, 
    - kind `domain`: the `results` array of `check_domains` for that name's domains, exactly as returned;
    - kind `profile`: the `profile` object of each `profile_domain` call for that name, exactly as returned;
    - kind `handle`: the `results` items of `check_handles` whose `handle` is that name's label, exactly as returned;
-   - kind `trademark`: the complete set of `search_trademarks` results for that name, exactly as returned;
+   - kind `trademark`: the whole `search_trademarks` response for that name (matches, links, and note), exactly as returned, wrapped in a one-item array;
    - kind `competitor`: the complete set of competitor findings for that name from step 5.
 
-   The store replaces the whole earlier `trademark` batch and the whole earlier `competitor` batch of a name with each new batch. So always send every trademark result and every competitor finding for that name in one entry, never only the new ones. If a step found nothing for a name, send an empty `results` array only when you mean to clear the earlier batch.
+   The store replaces the whole earlier `trademark` batch and the whole earlier `competitor` batch of a name with each new batch. So always send the whole trademark response and every competitor finding for that name in one entry, never only the new ones. If a step found nothing for a name, send an empty `results` array only when you mean to clear the earlier batch.
 
 ## Summary for the user
 
