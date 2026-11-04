@@ -52,7 +52,7 @@ export function tcpWhoisQuery(timeoutMs = 8000): WhoisQuery {
 }
 
 export function parseReferral(text: string): string | null {
-  const match = text.match(/^whois:\s*(\S+)/im);
+  const match = text.match(/^whois:[ \t]*(\S+)/im);
   return match?.[1]?.toLowerCase() ?? null;
 }
 
@@ -73,6 +73,10 @@ export async function whoisLookup(
     let server = await deps.cache.get<string | null>(cacheKey);
     if (server === undefined) {
       const iana = await deps.limiter.schedule(IANA_WHOIS, () => deps.query(IANA_WHOIS, rootLabel));
+      // Only a genuine IANA record may be cached as "no server"; garbled or throttled replies must not disable WHOIS for the TLD.
+      if (!/^domain:[ \t]*\S/im.test(iana)) {
+        return { kind: 'error', reason: 'IANA WHOIS reply not understood' };
+      }
       server = parseReferral(iana);
       try {
         await deps.cache.set(cacheKey, server, TTL.rdapBootstrap);

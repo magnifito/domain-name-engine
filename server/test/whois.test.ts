@@ -41,6 +41,12 @@ describe('parseReferral', () => {
   });
 });
 
+describe('parseReferral newline handling', () => {
+  it('does not cross newlines', () => {
+    expect(parseReferral('whois:\n\nstatus: ACTIVE')).toBeNull();
+  });
+});
+
 describe('parseAvailability', () => {
   it.each([
     ['No match for "ZZQX.COM".', 'not_found'],
@@ -110,7 +116,7 @@ describe('whoisLookup', () => {
 
   it('uses the last label of a multi-label TLD for the referral', async () => {
     const { deps: d } = await deps({
-      'whois.iana.org uk': 'whois:        whois.nic.uk\n',
+      'whois.iana.org uk': 'domain:       UK\nwhois:        whois.nic.uk\n',
       'whois.nic.uk acme.co.uk': 'No match for "acme.co.uk".',
     });
     expect(await whoisLookup('acme.co.uk', 'co.uk', d)).toMatchObject({ kind: 'not_found' });
@@ -125,5 +131,20 @@ describe('whoisLookup', () => {
       throw new Error('EROFS');
     };
     expect(await whoisLookup('a.xyz', 'xyz', d)).toMatchObject({ kind: 'not_found' });
+  });
+
+  it('does not cache a garbled IANA reply', async () => {
+    const { deps: d, calls } = await deps({ 'whois.iana.org xyz': 'Rate limit exceeded\n' });
+    const expected = { kind: 'error', reason: 'IANA WHOIS reply not understood' };
+    expect(await whoisLookup('a.xyz', 'xyz', d)).toEqual(expected);
+    expect(await whoisLookup('a.xyz', 'xyz', d)).toEqual(expected);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('caches null for a real IANA record without a whois server', async () => {
+    const { deps: d, calls } = await deps({ 'whois.iana.org example': IANA_NO_WHOIS });
+    expect(await whoisLookup('a.example', 'example', d)).toEqual({ kind: 'no_server' });
+    expect(await whoisLookup('b.example', 'example', d)).toEqual({ kind: 'no_server' });
+    expect(calls).toHaveLength(1);
   });
 });
