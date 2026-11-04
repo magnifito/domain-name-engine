@@ -52,4 +52,12 @@ describe('runStartup', () => {
       'domain-name-engine: failed to start: x [redacted] [redacted] [redacted] [redacted] [redacted] [redacted]\n',
     );
   });
+
+  it('redacts the trimmed form of a key value with surrounding whitespace (M4)', async () => {
+    const fake = io({ GITHUB_TOKEN: '  gh-token-1111\n' });
+    await runStartup(async () => {
+      throw new Error('bad gh-token-1111 and "  gh-token-1111\n"');
+    }, fake);
+    expect(fake.out[0]).not.toContain('gh-token-1111');
+  });
 });

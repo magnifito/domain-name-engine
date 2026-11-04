@@ -12,7 +12,10 @@ const RESEARCH_KEYS = [
 ] as const;
 
 function researchSecrets(env: NodeJS.ProcessEnv): string[] {
-  return RESEARCH_KEYS.map((name) => env[name] ?? '').filter((v) => v.length >= 4);
+  // Redact both the raw value and its trimmed form, since the keys are read trimmed.
+  return RESEARCH_KEYS.flatMap((name) => [env[name] ?? '', env[name]?.trim() ?? '']).filter(
+    (v) => v.length >= 4,
+  );
 }
 
 export interface StartupIo {
