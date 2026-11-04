@@ -64,9 +64,16 @@ describe('redditChecker', () => {
 
 describe('youtubeChecker', () => {
   it('reports taken when the channel list has items', async () => {
-    const { http, urls } = fakeHttp(() => Response.json({ items: [{ id: 'UC1' }] }));
+    const inits: (RequestInit | undefined)[] = [];
+    const { http, urls } = fakeHttp((_url, init) => {
+      inits.push(init);
+      return Response.json({ items: [{ id: 'UC1' }] });
+    });
     expect(await youtubeChecker(http, SECRET)('acme')).toMatchObject({ status: 'taken' });
     expect(urls[0]).toContain('forHandle=%40acme');
+    expect(urls[0]).not.toContain(SECRET);
+    expect(urls[0]).not.toContain('key=');
+    expect(((inits[0]?.headers ?? {}) as Record<string, string>)['x-goog-api-key']).toBe(SECRET);
   });
 
   it('reports likely_available when items is empty or missing', async () => {

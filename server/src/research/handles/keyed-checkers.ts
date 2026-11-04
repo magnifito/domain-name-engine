@@ -57,9 +57,10 @@ export function youtubeChecker(http: HttpFetch, apiKey: string): Checker {
   return async (handle) => {
     const url =
       'https://www.googleapis.com/youtube/v3/channels?part=id' +
-      `&forHandle=${encodeURIComponent(`@${handle}`)}&key=${encodeURIComponent(apiKey)}`;
+      `&forHandle=${encodeURIComponent(`@${handle}`)}`;
     try {
-      const res = await http(url);
+      // The key goes in a header so it never appears in a URL, log line, or error message.
+      const res = await http(url, { headers: { 'x-goog-api-key': apiKey } });
       if (!res.ok) {
         void res.body?.cancel().catch(() => undefined);
         return unknownProbe('youtube-data-api', `youtube-data-api returned HTTP ${res.status}`);
