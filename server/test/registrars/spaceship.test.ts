@@ -56,6 +56,22 @@ describe('Spaceship client', () => {
     expect(quote?.reason).toContain('taken');
   });
 
+  it('keeps the availability answer when the pricing call fails (M4)', async () => {
+    const fake = fakeHttp([
+      [`${SPACESHIP_API}/v1/domains/available`, () => Response.json(available)],
+      [`${SPACESHIP_API}/v1/domains/pricing/query`, () => new Response('boom', { status: 500 })],
+    ]);
+    const c = createSpaceshipClient(CREDS, { http: fake.http, now: () => FIXED_NOW });
+    const [quote] = await c.quote(['zentrova.site']);
+    expect(quote).toMatchObject({
+      availability: 'available',
+      firstYear: null,
+      renewal: null,
+      currency: null,
+    });
+    expect(quote?.reason).toContain('pricing');
+  });
+
   it('uses premium pricing for a premium domain', async () => {
     const [quote] = await client().client.quote(['rare.io']);
     expect(quote).toMatchObject({

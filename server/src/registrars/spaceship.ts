@@ -193,18 +193,28 @@ export function createSpaceshipClient(creds: SpaceshipCreds, deps: ClientDeps): 
         const availability = parseSpaceshipAvailability(
           await readJson(await deps.http(`${SPACESHIP_API}/v1/domains/available`, init)),
         );
-        const prices = parseSpaceshipDomainPrices(
-          await readJson(await deps.http(`${SPACESHIP_API}/v1/domains/pricing/query`, init)),
-        );
+        // A pricing failure must not discard the availability answer already received.
+        let prices: SpaceshipDomainPrice[] = [];
+        let priceFailed = false;
+        try {
+          prices = parseSpaceshipDomainPrices(
+            await readJson(await deps.http(`${SPACESHIP_API}/v1/domains/pricing/query`, init)),
+          );
+        } catch {
+          priceFailed = true;
+        }
         const checkedAt = now().toISOString();
         for (const domain of batch) {
+          const quote = toQuote(
+            domain,
+            checkedAt,
+            availability.find((a) => a.domain === domain),
+            prices.find((p) => p.domain === domain),
+          );
           out.push(
-            toQuote(
-              domain,
-              checkedAt,
-              availability.find((a) => a.domain === domain),
-              prices.find((p) => p.domain === domain),
-            ),
+            priceFailed && !quote.reason
+              ? { ...quote, reason: 'Spaceship pricing call failed; price unknown' }
+              : quote,
           );
         }
       }
