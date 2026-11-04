@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Runtime } from '../../src/runtime.js';
 import { connectClient } from '../helpers/mcp.js';
 
-const SKILLS = ['brief', 'generate'];
+const SKILLS = ['brief', 'generate', 'find-domain'];
 
 // Tool names from the spec's MCP tools table, plus Plan 2's project_update_brief.
 const KNOWN_TOOLS = [
