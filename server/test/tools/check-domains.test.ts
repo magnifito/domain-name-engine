@@ -7,6 +7,7 @@ import { callJson, connectClient } from '../helpers/mcp.js';
 function fakeRuntime(): Runtime & { seen: string[][] } {
   const seen: string[][] = [];
   return {
+    ...({} as Runtime),
     seen,
     checkDomains: async (domains) => {
       seen.push(domains);
