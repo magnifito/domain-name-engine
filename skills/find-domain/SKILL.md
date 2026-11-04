@@ -13,7 +13,7 @@ The entry point for the full flow. Each step is its own skill and also runs alon
 |---|---|---|
 | 1 | `brief` | `project_create` returned a slug |
 | 2 | `generate` | the project has names and the user picked a shortlist with `project_shortlist` |
-| 3 | `research` | every shortlisted name has domain checks for its TLDs, plus profile, handle, and trademark results |
+| 3 | `research` | every shortlisted name has domain checks and trademark results; profile results only for its domains with status `registered`; handle results only when `nameRules.handles` in the brief is not empty |
 | 4 | `language-check` | every shortlisted name has a note with kind `language` for each code in `audience.languages` |
 | 5 | `report` | `report.md` exists at the project's `paths.reportFile` |
 
