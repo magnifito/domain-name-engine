@@ -31,6 +31,13 @@ describe('check_domains tool', () => {
     expect(tools.map((t) => t.name)).toContain('check_domains');
   });
 
+  it('is annotated as read-only and open-world', async () => {
+    const client = await connectClient(fakeRuntime());
+    const { tools } = await client.listTools();
+    const tool = tools.find((t) => t.name === 'check_domains');
+    expect(tool?.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: true });
+  });
+
   it('checks every name × TLD pair, normalized and de-duplicated', async () => {
     const rt = fakeRuntime();
     const client = await connectClient(rt);

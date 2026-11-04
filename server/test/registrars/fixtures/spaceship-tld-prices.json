@@ -1,0 +1,38 @@
+{
+  "items": [
+    {
+      "tld": "site",
+      "prices": {
+        "register": [
+          {
+            "period": { "value": 1, "unit": "y" },
+            "priceInDefaultCurrency": {
+              "finalPrice": { "amount": "1.05", "currency": "EUR" },
+              "regularPrice": { "amount": "11.11", "currency": "EUR" }
+            }
+          }
+        ],
+        "renew": [
+          {
+            "period": { "value": 1, "unit": "y" },
+            "priceInDefaultCurrency": {
+              "finalPrice": { "amount": "11.11", "currency": "EUR" },
+              "regularPrice": { "amount": "11.11", "currency": "EUR" }
+            }
+          }
+        ],
+        "transfer": [
+          {
+            "period": { "value": 1, "unit": "y" },
+            "priceInDefaultCurrency": {
+              "finalPrice": { "amount": "10.10", "currency": "EUR" },
+              "regularPrice": { "amount": "10.10", "currency": "EUR" }
+            }
+          }
+        ]
+      }
+    },
+    { "tld": "id", "prices": {} }
+  ],
+  "total": 2
+}

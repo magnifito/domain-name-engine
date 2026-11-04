@@ -1,0 +1,14 @@
+{
+  "domains": [
+    { "domain": "zentrova.site", "result": "available", "premiumPricing": [] },
+    { "domain": "google.com", "result": "taken" },
+    {
+      "domain": "rare.io",
+      "result": "available",
+      "premiumPricing": [
+        { "operation": "register", "price": 999.99, "currency": "USD" },
+        { "operation": "renew", "price": 59.98, "currency": "USD" }
+      ]
+    }
+  ]
+}

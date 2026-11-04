@@ -1,0 +1,376 @@
+{
+  "schemaVersion": 1,
+  "registrars": {
+    "spaceship": {
+      "coverage": "partial",
+      "notSold": [],
+      "notListed": [],
+      "note": "Seed rows: first-year prices for 8 low-cost TLDs recorded from spaceship.com on 2026-11-04. Renewal prices stay unknown until the first refresh with API keys."
+    },
+    "namecheap": {
+      "coverage": "partial",
+      "notSold": [],
+      "notListed": [],
+      "note": "Seed rows without verified prices. The first refresh with API keys fills them from namecheap.users.getPricing."
+    },
+    "cloudflare": {
+      "coverage": "partial",
+      "notSold": [],
+      "notListed": [
+        {
+          "tld": "bond",
+          "source": "cfdomainpricing.com/prices.json",
+          "checkedAt": "2026-11-04"
+        },
+        {
+          "tld": "sbs",
+          "source": "cfdomainpricing.com/prices.json",
+          "checkedAt": "2026-11-04"
+        }
+      ],
+      "note": "Seed rows from cfdomainpricing.com/prices.json, a free third-party list of Cloudflare Registrar prices in USD. That file has no .bond or .sbs entry, which does not prove Cloudflare does not sell them. Run refresh:tlds to load every TLD."
+    }
+  },
+  "rows": [
+    {
+      "registrar": "spaceship",
+      "tld": "bond",
+      "firstYear": 1.28,
+      "renewal": null,
+      "transfer": null,
+      "currency": "EUR",
+      "source": "spaceship.com price list, recorded by maintainer",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "spaceship",
+      "tld": "lol",
+      "firstYear": 1.1,
+      "renewal": null,
+      "transfer": null,
+      "currency": "EUR",
+      "source": "spaceship.com price list, recorded by maintainer",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "spaceship",
+      "tld": "online",
+      "firstYear": 1.05,
+      "renewal": null,
+      "transfer": null,
+      "currency": "EUR",
+      "source": "spaceship.com price list, recorded by maintainer",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "spaceship",
+      "tld": "sbs",
+      "firstYear": 0.86,
+      "renewal": null,
+      "transfer": null,
+      "currency": "EUR",
+      "source": "spaceship.com price list, recorded by maintainer",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "spaceship",
+      "tld": "site",
+      "firstYear": 1.05,
+      "renewal": null,
+      "transfer": null,
+      "currency": "EUR",
+      "source": "spaceship.com price list, recorded by maintainer",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "spaceship",
+      "tld": "space",
+      "firstYear": 1.05,
+      "renewal": null,
+      "transfer": null,
+      "currency": "EUR",
+      "source": "spaceship.com price list, recorded by maintainer",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "spaceship",
+      "tld": "store",
+      "firstYear": 1.05,
+      "renewal": null,
+      "transfer": null,
+      "currency": "EUR",
+      "source": "spaceship.com price list, recorded by maintainer",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "spaceship",
+      "tld": "xyz",
+      "firstYear": 1.83,
+      "renewal": null,
+      "transfer": null,
+      "currency": "EUR",
+      "source": "spaceship.com price list, recorded by maintainer",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "namecheap",
+      "tld": "bond",
+      "firstYear": null,
+      "renewal": null,
+      "transfer": null,
+      "currency": null,
+      "source": "unverified",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "namecheap",
+      "tld": "lol",
+      "firstYear": null,
+      "renewal": null,
+      "transfer": null,
+      "currency": null,
+      "source": "unverified",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "namecheap",
+      "tld": "online",
+      "firstYear": null,
+      "renewal": null,
+      "transfer": null,
+      "currency": null,
+      "source": "unverified",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "namecheap",
+      "tld": "sbs",
+      "firstYear": null,
+      "renewal": null,
+      "transfer": null,
+      "currency": null,
+      "source": "unverified",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "namecheap",
+      "tld": "site",
+      "firstYear": null,
+      "renewal": null,
+      "transfer": null,
+      "currency": null,
+      "source": "unverified",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "namecheap",
+      "tld": "space",
+      "firstYear": null,
+      "renewal": null,
+      "transfer": null,
+      "currency": null,
+      "source": "unverified",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "namecheap",
+      "tld": "store",
+      "firstYear": null,
+      "renewal": null,
+      "transfer": null,
+      "currency": null,
+      "source": "unverified",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "namecheap",
+      "tld": "xyz",
+      "firstYear": null,
+      "renewal": null,
+      "transfer": null,
+      "currency": null,
+      "source": "unverified",
+      "checkedAt": "2026-11-04"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "ai",
+      "firstYear": 80,
+      "renewal": 80,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-10"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "app",
+      "firstYear": 8.2,
+      "renewal": 14.2,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "co",
+      "firstYear": 30,
+      "renewal": 30,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "com",
+      "firstYear": 10.46,
+      "renewal": 10.46,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "dev",
+      "firstYear": 8.2,
+      "renewal": 12.2,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-09"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "io",
+      "firstYear": 32,
+      "renewal": 50,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "lol",
+      "firstYear": 25.2,
+      "renewal": 20.2,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-07"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "me",
+      "firstYear": 16.56,
+      "renewal": 16.56,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "net",
+      "firstYear": 11.86,
+      "renewal": 11.86,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "online",
+      "firstYear": 4.99,
+      "renewal": 27.7,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "org",
+      "firstYear": 8.5,
+      "renewal": 11.2,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "sh",
+      "firstYear": 45,
+      "renewal": 45,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "shop",
+      "firstYear": 30.2,
+      "renewal": 30.2,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "site",
+      "firstYear": 4.99,
+      "renewal": 27.7,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "space",
+      "firstYear": 4.99,
+      "renewal": 25.2,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-09-23"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "store",
+      "firstYear": 4.99,
+      "renewal": 42.2,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-09"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "tech",
+      "firstYear": 9.99,
+      "renewal": 49.2,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-09-24"
+    },
+    {
+      "registrar": "cloudflare",
+      "tld": "xyz",
+      "firstYear": 12.3,
+      "renewal": 11.2,
+      "transfer": null,
+      "currency": "USD",
+      "source": "cfdomainpricing.com/prices.json",
+      "checkedAt": "2026-10-13"
+    }
+  ]
+}

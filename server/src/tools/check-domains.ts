@@ -30,6 +30,7 @@ export function registerCheckDomains(server: McpServer, rt: Pick<Runtime, 'check
             'TLDs with or without a leading dot, e.g. "com", ".io"; multi-label values must be registry suffixes such as "co.uk"',
           ),
       },
+      annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async ({ names, tlds }) => {
       let domains: string[];

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApiResponse xmlns="http://api.namecheap.com/xml.response" Status="OK">
+  <Errors />
+  <RequestedCommand>namecheap.domains.gettldlist</RequestedCommand>
+  <CommandResponse Type="namecheap.domains.getTldList">
+    <Tlds>
+      <Tld Name="site" NonRealTimeDomain="false" MinRegisterYears="1" MaxRegisterYears="10" IsApiRegisterable="true" IsApiRenewable="true" IsApiTransferable="true" Type="GTLD">Site</Tld>
+    </Tlds>
+  </CommandResponse>
+  <Server>TEST</Server>
+  <GMTTimeDifference>--5:00</GMTTimeDifference>
+  <ExecutionTime>0.1</ExecutionTime>
+</ApiResponse>

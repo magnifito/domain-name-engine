@@ -2,7 +2,24 @@
   "mcpServers": {
     "domain-engine": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/server/dist/index.js"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/dist/index.js"],
+      "env": {
+        "DOMAIN_ENGINE_HOME": "${DOMAIN_ENGINE_HOME:-}",
+        "SPACESHIP_API_KEY": "${SPACESHIP_API_KEY:-}",
+        "SPACESHIP_API_SECRET": "${SPACESHIP_API_SECRET:-}",
+        "NAMECHEAP_API_USER": "${NAMECHEAP_API_USER:-}",
+        "NAMECHEAP_API_KEY": "${NAMECHEAP_API_KEY:-}",
+        "NAMECHEAP_CLIENT_IP": "${NAMECHEAP_CLIENT_IP:-}",
+        "CLOUDFLARE_API_TOKEN": "${CLOUDFLARE_API_TOKEN:-}",
+        "CLOUDFLARE_ACCOUNT_ID": "${CLOUDFLARE_ACCOUNT_ID:-}",
+        "GITHUB_TOKEN": "${GITHUB_TOKEN:-}",
+        "REDDIT_CLIENT_ID": "${REDDIT_CLIENT_ID:-}",
+        "REDDIT_CLIENT_SECRET": "${REDDIT_CLIENT_SECRET:-}",
+        "YOUTUBE_API_KEY": "${YOUTUBE_API_KEY:-}",
+        "EUIPO_CLIENT_ID": "${EUIPO_CLIENT_ID:-}",
+        "EUIPO_CLIENT_SECRET": "${EUIPO_CLIENT_SECRET:-}",
+        "EUIPO_ENV": "${EUIPO_ENV:-}"
+      }
     }
   }
 }

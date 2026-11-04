@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:live": "LIVE=1 vitest run test/live",
     "check": "biome ci .",
-    "format": "biome check --write ."
+    "format": "biome check --write .",
+    "refresh:tlds": "tsx scripts/refresh-registrar-tlds.ts && biome format --write data/registrar-tlds.json"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
@@ -23,6 +24,7 @@
     "@biomejs/biome": "2.6.4",
     "@types/node": "^20.19.43",
     "tsdown": "0.23.5",
+    "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
   }

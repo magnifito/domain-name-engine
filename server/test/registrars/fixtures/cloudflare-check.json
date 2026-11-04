@@ -1,0 +1,23 @@
+{
+  "errors": [],
+  "messages": [],
+  "success": true,
+  "result": {
+    "domains": [
+      {
+        "name": "zentrova.site",
+        "registrable": true,
+        "tier": "standard",
+        "pricing": { "currency": "USD", "registration_cost": "4.99", "renewal_cost": "27.70" }
+      },
+      { "name": "google.com", "registrable": false, "reason": "domain_unavailable" },
+      {
+        "name": "rare.io",
+        "registrable": false,
+        "reason": "domain_premium",
+        "pricing": { "currency": "USD", "registration_cost": "2500.00", "renewal_cost": "50.00" }
+      },
+      { "name": "zentrova.lol", "registrable": false, "reason": "extension_not_supported_via_api" }
+    ]
+  }
+}
