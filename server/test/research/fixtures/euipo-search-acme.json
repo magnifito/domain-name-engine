@@ -1,0 +1,25 @@
+{
+  "trademarks": [
+    {
+      "applicationNumber": "018000001",
+      "wordMarkSpecification": { "verbalElement": "ACME" },
+      "markFeature": "WORD",
+      "status": "REGISTERED",
+      "niceClasses": [9, 42],
+      "applicationDate": "2019-01-15",
+      "applicants": [{ "name": "Acme Holdings GmbH" }]
+    },
+    {
+      "applicationNumber": "018000002",
+      "markFeature": "FIGURATIVE",
+      "status": "EXPIRED",
+      "niceClasses": ["35"],
+      "applicants": []
+    },
+    { "markFeature": "WORD" }
+  ],
+  "size": 25,
+  "totalElements": 2,
+  "totalPages": 1,
+  "page": 0
+}
