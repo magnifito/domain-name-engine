@@ -319,6 +319,95 @@ describe('ProjectStore.addChecks', () => {
     expect(checks?.competitors.map((c) => c.url)).toEqual(['https://fridgely.example']);
   });
 
+  it('replays a research-shaped payload per name and reads it back with project_get', async () => {
+    const { store, slug } = await withProject();
+    await store.addNames(
+      slug,
+      [
+        { name: 'Fridgely', rulesetId: 'coined' },
+        { name: 'Zentrova', rulesetId: 'coined' },
+      ],
+      weightsOf('coined'),
+    );
+    const at = '2026-11-04T10:00:00Z';
+    const researchPayload = (label: string) => [
+      {
+        name: label,
+        kind: 'domain' as const,
+        results: [domain(`${label}.com`, 'registered'), domain(`get${label}.com`)],
+      },
+      {
+        name: label,
+        kind: 'profile' as const,
+        results: [
+          {
+            domain: `${label}.com`,
+            status: 'live_site',
+            source: 'rdap',
+            checkedAt: at,
+            confidence: 'medium',
+          },
+        ],
+      },
+      {
+        name: label,
+        kind: 'handle' as const,
+        results: [
+          {
+            handle: label,
+            platform: 'github',
+            status: 'taken',
+            source: 'github-api',
+            checkedAt: at,
+            confidence: 'high',
+          },
+        ],
+      },
+      {
+        name: label,
+        kind: 'trademark' as const,
+        // The whole search_trademarks response, wrapped in a one-item array.
+        results: [
+          {
+            source: 'euipo',
+            checkedAt: at,
+            confidence: 'medium',
+            status: 'no_matches',
+            matches: [],
+            links: [{ office: 'USPTO', url: 'https://tmsearch.uspto.gov/' }],
+            note: 'no_matches is not a clearance',
+          },
+        ],
+      },
+      {
+        name: label,
+        kind: 'competitor' as const,
+        results: [
+          {
+            source: 'websearch',
+            checkedAt: at,
+            url: `https://${label}.example`,
+            title: 'Same-name business',
+            finding: 'Same-name business',
+          },
+        ],
+      },
+    ];
+    for (const label of ['fridgely', 'zentrova']) {
+      await store.addChecks(slug, researchPayload(label));
+    }
+    const { project } = await store.get(slug);
+    for (const label of ['fridgely', 'zentrova']) {
+      const checks = project.checks[label];
+      expect(checks?.domains.map((d) => d.domain)).toEqual([`${label}.com`, `get${label}.com`]);
+      expect(checks?.profiles).toHaveLength(1);
+      expect(checks?.handles.map((h) => h.platform)).toEqual(['github']);
+      expect(checks?.trademarks).toHaveLength(1);
+      expect(checks?.trademarks[0]).toMatchObject({ source: 'euipo', status: 'no_matches' });
+      expect(checks?.competitors.map((c) => c.url)).toEqual([`https://${label}.example`]);
+    }
+  });
+
   it('rejects a domain result that belongs to a different name', async () => {
     const { store, slug } = await withProject();
     await store.addNames(slug, [{ name: 'Alpha', rulesetId: 'coined' }], weightsOf('coined'));
