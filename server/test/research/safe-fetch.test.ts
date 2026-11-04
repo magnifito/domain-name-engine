@@ -44,6 +44,10 @@ describe('isBlockedAddress', () => {
     '64:ff9b::7f00:1',
     '2002:7f00:1::1',
     '0:0:0:0:0:0:0:1',
+    '::ffff:0:7f00:1',
+    '::ffff:0:127.0.0.1',
+    '64:ff9b:1::7f00:1',
+    '64:ff9b:1:ffff::1',
   ])('blocks %s', (ip) => {
     expect(isBlockedAddress(ip)).toBe(true);
   });

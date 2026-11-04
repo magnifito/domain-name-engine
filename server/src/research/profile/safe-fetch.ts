@@ -84,6 +84,14 @@ function blockedIpv6(bytes: readonly number[]): boolean {
   if (first === 0x00 && second === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b) {
     if (bytes.slice(4, 12).every((b) => b === 0)) return blockedIpv4(bytes.slice(12));
   }
+  // ::ffff:0:0:0/96 (IPv4-translated): no public use, blocked whole.
+  if (bytes.slice(0, 8).every((b) => b === 0) && bytes[8] === 255 && bytes[9] === 255) {
+    if (bytes[10] === 0 && bytes[11] === 0) return true;
+  }
+  // 64:ff9b:1::/48 (RFC 8215 local-use NAT64) is blocked whole.
+  if (first === 0x00 && second === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b) {
+    if (bytes[4] === 0x00 && bytes[5] === 0x01) return true;
+  }
   // 2002::/16 (6to4) embeds an IPv4 address in bytes 2 to 5.
   if (first === 0x20 && second === 0x02) return blockedIpv4(bytes.slice(2, 6));
   if ((first & 0xfe) === 0xfc) return true; // fc00::/7 unique local
