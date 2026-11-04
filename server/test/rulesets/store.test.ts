@@ -76,6 +76,11 @@ describe('RulesetStore', () => {
     );
   });
 
+  it('reserves the id "user" for names the user supplied', async () => {
+    const { store } = await setup();
+    await expect(store.save(custom('user'))).rejects.toThrow(/"user" is reserved/);
+  });
+
   it('rejects an invalid ruleset with a readable message', async () => {
     const { store } = await setup();
     const bad = { ...custom(), length: { min: 9, max: 3 } };

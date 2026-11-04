@@ -81,6 +81,12 @@ describe('BriefSchema', () => {
     expect(issues({ ...brief, personality })[0]).toMatch(/^personality\.tone: /);
   });
 
+  it('does not accept the reserved ruleset id "user"', async () => {
+    const brief = await loadBrief();
+    const bad = { ...brief, nameRules: { ...brief.nameRules, rulesets: ['user'] } };
+    expect(BriefSchema.safeParse(bad).success).toBe(false);
+  });
+
   it('needs one to three distinct rulesets', async () => {
     const brief = await loadBrief();
     const withRulesets = (rulesets: string[]) => ({

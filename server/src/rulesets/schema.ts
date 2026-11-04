@@ -28,6 +28,12 @@ export const RulesetIdSchema = z
   .string()
   .regex(RULESET_ID, 'Ruleset ids use 1-40 lowercase letters, digits, or inner hyphens.');
 
+/** Id of a ruleset that exists as a file or in the bundle; "user" only marks user-supplied names. */
+export const SelectableRulesetIdSchema = RulesetIdSchema.refine(
+  (id) => id !== 'user',
+  '"user" is reserved for names the user supplied; choose another ruleset id.',
+);
+
 function isCanonicalTld(value: string): boolean {
   try {
     return normalizeTld(value) === value;
@@ -45,7 +51,7 @@ const weight = z.number().min(0).max(1);
 
 export const RulesetSchema = z
   .object({
-    id: RulesetIdSchema,
+    id: SelectableRulesetIdSchema,
     name: nonBlank(60),
     description: nonBlank(400),
     examples: z.array(nonBlank(40)).min(3).max(5),

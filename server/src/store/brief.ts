@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { nonBlank, RulesetIdSchema, TldSchema } from '../rulesets/schema.js';
+import { nonBlank, SelectableRulesetIdSchema, TldSchema } from '../rulesets/schema.js';
 
 export const ARCHETYPES = [
   'sage',
@@ -59,7 +59,7 @@ export const BriefSchema = z.object({
   }),
   nameRules: z.object({
     rulesets: z
-      .array(RulesetIdSchema)
+      .array(SelectableRulesetIdSchema)
       .min(1)
       .max(3)
       .refine((ids) => new Set(ids).size === ids.length, 'Pick each ruleset once.')
