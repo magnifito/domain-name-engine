@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApiResponse Status="ERROR" xmlns="http://api.namecheap.com/xml.response">
+  <Errors>
+    <Error Number="1011150">Parameter RequestIP is invalid</Error>
+  </Errors>
+  <Warnings />
+  <RequestedCommand />
+  <Server>TEST</Server>
+  <GMTTimeDifference>--5:00</GMTTimeDifference>
+  <ExecutionTime>0</ExecutionTime>
+</ApiResponse>

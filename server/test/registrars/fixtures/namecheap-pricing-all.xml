@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApiResponse xmlns="http://api.namecheap.com/xml.response" Status="OK">
+  <Errors />
+  <RequestedCommand>namecheap.users.getPricing</RequestedCommand>
+  <CommandResponse Type="namecheap.users.getPricing">
+    <UserGetPricingResult>
+      <ProductType Name="DOMAIN">
+        <ProductCategory Name="REACTIVATE">
+          <Product Name="site">
+            <Price Duration="1" DurationType="YEAR" Price="30.00" RegularPrice="30.00" YourPrice="30.00" CouponPrice="" Currency="USD" />
+          </Product>
+        </ProductCategory>
+        <ProductCategory Name="REGISTER">
+          <Product Name="site">
+            <Price Duration="1" DurationType="YEAR" Price="1.11" RegularPrice="22.22" YourPrice="22.22" CouponPrice="" Currency="USD" />
+          </Product>
+          <Product Name="notlisted">
+            <Price Duration="1" DurationType="YEAR" Price="5.00" RegularPrice="5.00" YourPrice="5.00" CouponPrice="" Currency="USD" />
+          </Product>
+        </ProductCategory>
+        <ProductCategory Name="RENEW">
+          <Product Name="site">
+            <Price Duration="1" DurationType="YEAR" Price="22.22" RegularPrice="22.22" YourPrice="22.22" CouponPrice="" Currency="USD" />
+          </Product>
+        </ProductCategory>
+        <ProductCategory Name="TRANSFER">
+          <Product Name="site">
+            <Price Duration="1" DurationType="YEAR" Price="20.20" RegularPrice="20.20" YourPrice="20.20" CouponPrice="" Currency="USD" />
+          </Product>
+        </ProductCategory>
+      </ProductType>
+    </UserGetPricingResult>
+  </CommandResponse>
+  <Server>TEST</Server>
+  <GMTTimeDifference>--5:00</GMTTimeDifference>
+  <ExecutionTime>0.1</ExecutionTime>
+</ApiResponse>
