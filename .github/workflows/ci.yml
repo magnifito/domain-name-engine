@@ -27,4 +27,5 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - name: Fail if the committed bundle is stale
-        run: git diff --exit-code -- dist
+        run: |
+          test -z "$(git status --porcelain -- dist)" || { git status --porcelain -- dist; echo "dist is stale: run pnpm build and commit"; exit 1; }
