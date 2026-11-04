@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "publication": "2026-11-01T00:00:00Z",
+  "services": [
+    [["com", "net"], ["https://rdap.verisign.com/com/v1/"]],
+    [["dev", "app"], ["https://pubapi.registry.google/rdap/"]],
+    [["uk"], ["http://rdap.nominet.uk/uk/", "https://rdap.nominet.uk/uk/"]]
+  ]
+}
