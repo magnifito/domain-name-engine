@@ -7901,12 +7901,21 @@ var DiskCache = class {
 		return join(this.dir, `${createHash("sha256").update(key).digest("hex")}.json`);
 	}
 };
+// src/util/env.ts
+/**
+* Reads one env variable. Returns undefined when it is unset, blank, or an unexpanded
+* "${VAR}" placeholder (what .mcp.json passes when the variable is not set).
+*/
+function readEnv(env, name) {
+	const value = env[name]?.trim();
+	return value && !value.startsWith("${") ? value : void 0;
+}
 // src/config.ts
 const VERSION = "0.1.0";
 const REPO_URL = "https://github.com/magnifito/domain-name-engine";
 const USER_AGENT = `domain-name-engine/${VERSION} (+${REPO_URL})`;
 function engineHome(env = process.env) {
-	return env.DOMAIN_ENGINE_HOME || join(homedir(), ".domain-engine");
+	return readEnv(env, "DOMAIN_ENGINE_HOME") || join(homedir(), ".domain-engine");
 }
 function enginePaths(home) {
 	return {
@@ -8992,29 +9001,25 @@ const LIVE_FEATURES = {
 	namecheap: "live availability, premium flag, and price (the caller IP must be allow-listed)",
 	cloudflare: "live availability, premium tier, and price (Registrar API, beta)"
 };
-function read$1(env, name) {
-	const value = env[name]?.trim();
-	return value && !value.startsWith("${") ? value : void 0;
-}
 /** Reads registrar keys from env. A registrar counts only when all its variables are set. */
 function readCredentials(env = process.env) {
 	const creds = {};
-	const ssKey = read$1(env, "SPACESHIP_API_KEY");
-	const ssSecret = read$1(env, "SPACESHIP_API_SECRET");
+	const ssKey = readEnv(env, "SPACESHIP_API_KEY");
+	const ssSecret = readEnv(env, "SPACESHIP_API_SECRET");
 	if (ssKey && ssSecret) creds.spaceship = {
 		apiKey: ssKey,
 		apiSecret: ssSecret
 	};
-	const ncUser = read$1(env, "NAMECHEAP_API_USER");
-	const ncKey = read$1(env, "NAMECHEAP_API_KEY");
-	const ncIp = read$1(env, "NAMECHEAP_CLIENT_IP");
+	const ncUser = readEnv(env, "NAMECHEAP_API_USER");
+	const ncKey = readEnv(env, "NAMECHEAP_API_KEY");
+	const ncIp = readEnv(env, "NAMECHEAP_CLIENT_IP");
 	if (ncUser && ncKey && ncIp) creds.namecheap = {
 		apiUser: ncUser,
 		apiKey: ncKey,
 		clientIp: ncIp
 	};
-	const cfToken = read$1(env, "CLOUDFLARE_API_TOKEN");
-	const cfAccount = read$1(env, "CLOUDFLARE_ACCOUNT_ID");
+	const cfToken = readEnv(env, "CLOUDFLARE_API_TOKEN");
+	const cfAccount = readEnv(env, "CLOUDFLARE_ACCOUNT_ID");
 	if (cfToken && cfAccount) creds.cloudflare = {
 		apiToken: cfToken,
 		accountId: cfAccount
@@ -9071,7 +9076,7 @@ function registrarStatus(env = process.env) {
 	return {
 		registrars: REGISTRARS.map((registrar) => {
 			const envVars = [...ENV_VARS[registrar]];
-			const missing = envVars.filter((name) => !read$1(env, name));
+			const missing = envVars.filter((name) => !readEnv(env, name));
 			return {
 				registrar,
 				name: REGISTRAR_NAMES[registrar],
@@ -9084,7 +9089,7 @@ function registrarStatus(env = process.env) {
 		otherKeys: OTHER_ENV_VARS.map(({ name, usedFor }) => ({
 			name,
 			usedFor,
-			configured: read$1(env, name) !== void 0
+			configured: readEnv(env, name) !== void 0
 		})),
 		note: STATUS_NOTE
 	};
@@ -9272,6 +9277,7 @@ function merge(table, live) {
 	if (live.currency !== null && (live.firstYear !== null || live.renewal !== null)) return {
 		...withLive,
 		priceSource: "live",
+		sale: "listed",
 		firstYear: live.firstYear,
 		renewal: live.renewal,
 		transfer: null,
@@ -9910,28 +9916,24 @@ async function checkHandles(handles, platforms, deps, concurrency = 4) {
 	return results;
 }
 // src/research/keys.ts
-function read(env, name) {
-	const value = env[name]?.trim();
-	return value ? value : void 0;
-}
 function readResearchKeys(env) {
 	const keys = {};
-	const githubToken = read(env, "GITHUB_TOKEN");
+	const githubToken = readEnv(env, "GITHUB_TOKEN");
 	if (githubToken) keys.githubToken = githubToken;
-	const redditId = read(env, "REDDIT_CLIENT_ID");
-	const redditSecret = read(env, "REDDIT_CLIENT_SECRET");
+	const redditId = readEnv(env, "REDDIT_CLIENT_ID");
+	const redditSecret = readEnv(env, "REDDIT_CLIENT_SECRET");
 	if (redditId && redditSecret) keys.reddit = {
 		clientId: redditId,
 		clientSecret: redditSecret
 	};
-	const youtubeApiKey = read(env, "YOUTUBE_API_KEY");
+	const youtubeApiKey = readEnv(env, "YOUTUBE_API_KEY");
 	if (youtubeApiKey) keys.youtubeApiKey = youtubeApiKey;
-	const euipoId = read(env, "EUIPO_CLIENT_ID");
-	const euipoSecret = read(env, "EUIPO_CLIENT_SECRET");
+	const euipoId = readEnv(env, "EUIPO_CLIENT_ID");
+	const euipoSecret = readEnv(env, "EUIPO_CLIENT_SECRET");
 	if (euipoId && euipoSecret) keys.euipo = {
 		clientId: euipoId,
 		clientSecret: euipoSecret,
-		env: read(env, "EUIPO_ENV") === "sandbox" ? "sandbox" : "production"
+		env: readEnv(env, "EUIPO_ENV") === "sandbox" ? "sandbox" : "production"
 	};
 	return keys;
 }
@@ -26380,7 +26382,7 @@ const RESEARCH_KEYS = [
 	"EUIPO_CLIENT_SECRET"
 ];
 function researchSecrets(env) {
-	return RESEARCH_KEYS.map((name) => env[name] ?? "").filter((v) => v.length >= 4);
+	return RESEARCH_KEYS.flatMap((name) => [env[name] ?? "", env[name]?.trim() ?? ""]).filter((v) => v.length >= 4);
 }
 const processIo = {
 	stderr: (text) => process.stderr.write(text),
