@@ -100,7 +100,7 @@ The engine never scrapes registrar web pages. Spaceship and Namecheap price page
 - Projects, custom rulesets, and the cache live in `~/.domain-engine/`. Set `DOMAIN_ENGINE_HOME` to use another folder.
 - Reports are written to `~/.domain-engine/projects/<slug>/report.md`.
 - The server sends requests to RDAP and WHOIS servers, DNS resolvers, the research APIs, and the registrar APIs whose keys you set. Requests carry a generic `User-Agent` with the plugin name and repository URL, and no personal data.
-- Requests are rate limited per host, 1 request per second by default, with retries on HTTP 429 and 5xx.
+- Requests are rate limited per host, 1 request per second by default, with retries on HTTP 429 and 5xx for RDAP and registrar HTTP requests only. The homepage fetch and WHOIS make one try.
 
 ## Development
 
