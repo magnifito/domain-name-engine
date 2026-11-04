@@ -87,6 +87,30 @@ describe('checkDomain', () => {
     expect(result.reason).toBe('RDAP: RDAP HTTP 400; WHOIS: timed out');
   });
 
+  it('explains the conflicting-signal and dns-only rows', async () => {
+    const conflict = await checkDomain(
+      'acme.test',
+      await makeDeps({ rdap: { kind: 'not_found' }, dns: true }),
+    );
+    expect(conflict.reason).toContain('DNS has nameservers');
+    const dnsOnly = await checkDomain(
+      'acme.test',
+      await makeDeps({ rdap: { kind: 'no_server' }, whois: whoisOf('unknown'), dns: true }),
+    );
+    expect(dnsOnly.reason).toContain('RDAP and WHOIS gave no usable answer');
+  });
+
+  it('does not query whois or dns when rdap answers registered', async () => {
+    const deps = await makeDeps({ rdap: { kind: 'registered', record: {} } });
+    deps.whois = async () => {
+      throw new Error('whois must not run');
+    };
+    deps.dns = async () => {
+      throw new Error('dns must not run');
+    };
+    expect((await checkDomain('acme.test', deps)).source).toBe('rdap');
+  });
+
   it('serves registered results from cache', async () => {
     const deps = await makeDeps({ rdap: { kind: 'registered', record: {} } });
     await checkDomain('acme.test', deps);

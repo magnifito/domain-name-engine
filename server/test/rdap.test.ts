@@ -62,6 +62,25 @@ describe('loadRdapServers', () => {
     expect(urls).toEqual([IANA_RDAP_BOOTSTRAP]);
   });
 
+  it('refetches the bootstrap after its TTL expires', async () => {
+    let now = 1_000;
+    const cache = new DiskCache(await mkdtemp(join(tmpdir(), 'dne-rdap-')), () => now);
+    const { http, urls } = routeHttp({ [IANA_RDAP_BOOTSTRAP]: Response.json(bootstrap) });
+    await loadRdapServers(http, cache);
+    now += 25 * 3_600_000;
+    await loadRdapServers(http, cache);
+    expect(urls).toHaveLength(2);
+  });
+
+  it('still returns the servers when the cache cannot be written', async () => {
+    const cache = new DiskCache(await mkdtemp(join(tmpdir(), 'dne-rdap-')));
+    cache.set = async () => {
+      throw new Error('EROFS');
+    };
+    const { http } = routeHttp({ [IANA_RDAP_BOOTSTRAP]: Response.json(bootstrap) });
+    expect((await loadRdapServers(http, cache)).com).toBeDefined();
+  });
+
   it('throws a clear error on a malformed bootstrap file', async () => {
     const cache = new DiskCache(await mkdtemp(join(tmpdir(), 'dne-rdap-')));
     const { http } = routeHttp({ [IANA_RDAP_BOOTSTRAP]: Response.json({ nope: true }) });
@@ -121,6 +140,16 @@ describe('rdapLookup', () => {
     const { http, urls } = routeHttp({});
     await rdapLookup('a/../b?x=1.com', 'com', { http, servers: async () => servers });
     expect(urls).toEqual(['https://rdap.verisign.com/com/v1/domain/a%2F..%2Fb%3Fx%3D1.com']);
+  });
+
+  it('asks for rdap+json', async () => {
+    const seen: Array<RequestInit | undefined> = [];
+    const http: HttpFetch = async (_url, init) => {
+      seen.push(init);
+      return new Response('', { status: 404 });
+    };
+    await rdapLookup('acme.com', 'com', { http, servers: async () => servers });
+    expect(new Headers(seen[0]?.headers).get('accept')).toBe('application/rdap+json');
   });
 
   it('looks the TLD up case-insensitively', async () => {
