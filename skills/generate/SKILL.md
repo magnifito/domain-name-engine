@@ -69,8 +69,8 @@ Mention skipped names only when the reason matters to the user.
 
 For each ruleset:
 
-1. Start from `tlds.order`. If `tlds.countryFirst` is true, put the ccTLD of the first country in `audience.countries` first: the lowercase code, except `GB`, which uses `uk`. Remove duplicates.
-2. Take the first 2 TLDs. If `tlds.com` is `must` and `com` is not among them, add `com`.
+1. Build the ruleset's coverage list as described in "TLD coverage for a name" in `references/tlds.md`, without the `extraTlds` step.
+2. Take the first 2 TLDs of that list. If `tlds.com` is `must` and `com` is not among them, add `com`.
 3. Call `check_domains` with that ruleset's new labels and those TLDs. Keep each call at 200 domains or fewer (labels times TLDs); split into more calls when needed.
 4. If `tlds.com` is `must` and a name's `.com` is `registered`, check up to 3 of the ruleset's `tlds.affixes` on `.com`. The hyphen only marks the position: `get-` means `get<label>.com`, and `-hq` means `<label>hq.com`.
 5. Save every result with `project_add_checks`, kind `"domain"`, under the base name, affix variants included. Pass the result objects exactly as `check_domains` returned them.

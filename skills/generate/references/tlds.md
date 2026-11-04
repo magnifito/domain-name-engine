@@ -28,3 +28,15 @@ Use this when choosing TLDs and explaining them to the user. It has no prices: p
 ## Status words
 
 - `likely_available` from `check_domains` means RDAP, WHOIS, and DNS found no registration. These free sources cannot see premium or registry-reserved names, so the user must confirm at a registrar.
+
+## TLD coverage for a name
+
+Both `generate` and `research` build the TLD list for a name this way. Build the ordered list for the name's ruleset and brief:
+
+1. If the ruleset's `tlds.countryFirst` is true and the brief's `audience.countries` is not empty, start with the ccTLD of the first country (lowercase country code; `GB` uses `uk`).
+2. Add `com` if it is not in the list yet.
+3. Add every TLD of the ruleset's `tlds.order`.
+4. Add every TLD of the brief's `nameRules.overrides.extraTlds`.
+5. Remove duplicates, keeping the first position.
+
+The primary TLDs are the first entry of the list and `com`.
