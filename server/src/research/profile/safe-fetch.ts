@@ -2,7 +2,8 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
-import { Readable } from 'node:stream';
+import { pipeline, Readable } from 'node:stream';
+import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import { USER_AGENT } from '../../config.js';
 import type { HttpFetch } from '../../http/http.js';
 import type { HostLimiter } from '../../limiter/limiter.js';
@@ -140,6 +141,7 @@ export const nodeTransport: Transport = ({ url, address, family, init, timeoutMs
     new Headers(init.headers).forEach((value, key) => {
       headers[key] = value;
     });
+    headers['accept-encoding'] = 'identity';
     const send = url.protocol === 'https:' ? httpsRequest : httpRequest;
     const hostname = url.hostname.replace(/^\[|\]$/g, '');
     const req = send(
@@ -172,9 +174,28 @@ export const nodeTransport: Transport = ({ url, address, family, init, timeoutMs
             if (Array.isArray(value)) for (const v of value) outHeaders.append(key, v);
             else if (value !== undefined) outHeaders.set(key, value);
           }
+          // Servers sometimes compress despite "identity". Decompress lazily: the caller's body
+          // cap then applies to decompressed bytes, and cancelling the body destroys the socket.
+          const encoding = String(res.headers['content-encoding'] ?? '')
+            .trim()
+            .toLowerCase();
+          const decoder =
+            encoding === 'gzip' || encoding === 'x-gzip'
+              ? createGunzip()
+              : encoding === 'deflate'
+                ? createInflate()
+                : encoding === 'br'
+                  ? createBrotliDecompress()
+                  : undefined;
+          let source: Readable = res;
+          if (decoder) {
+            outHeaders.delete('content-encoding');
+            outHeaders.delete('content-length');
+            source = pipeline(res, decoder, () => undefined);
+          }
           const body = NULL_BODY_STATUS.has(status)
             ? null
-            : (Readable.toWeb(res) as ReadableStream);
+            : (Readable.toWeb(source) as ReadableStream);
           if (body === null) res.resume();
           resolve(new Response(body, { status, headers: outHeaders }));
         } catch (error) {

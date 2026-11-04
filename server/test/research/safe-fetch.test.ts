@@ -1,9 +1,10 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createServer as createTcpServer } from 'node:net';
+import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { HostLimiter } from '../../src/limiter/limiter.js';
-import { fetchHomepage } from '../../src/research/profile/homepage.js';
+import { fetchHomepage, readCapped } from '../../src/research/profile/homepage.js';
 import {
   BlockedError,
   createGuardedHttp,
@@ -241,4 +242,54 @@ describe('nodeTransport hostile responses', () => {
       server.close();
     }
   }, 10_000);
+});
+
+describe('nodeTransport content encoding', () => {
+  async function serve(handler: Parameters<typeof createServer>[1]) {
+    const server = createServer(handler);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return { server, port: (server.address() as AddressInfo).port };
+  }
+  const call = (port: number) =>
+    nodeTransport({
+      url: new URL(`http://pinned.invalid:${port}/`),
+      address: '127.0.0.1',
+      family: 4,
+      init: {},
+      timeoutMs: 3000,
+    });
+
+  it('asks for identity encoding and decompresses a gzip page anyway', async () => {
+    let asked = '';
+    const { server, port } = await serve((req, res) => {
+      asked = String(req.headers['accept-encoding']);
+      res.setHeader('content-type', 'text/html');
+      res.setHeader('content-encoding', 'gzip');
+      res.end(gzipSync('<title>Zipped Acme</title>'));
+    });
+    try {
+      const res = await call(port);
+      expect(asked).toBe('identity');
+      expect(res.headers.get('content-encoding')).toBeNull();
+      expect(await readCapped(res)).toContain('<title>Zipped Acme</title>');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('caps the decompressed size, so a zip bomb is cut off', async () => {
+    const bomb = gzipSync(Buffer.alloc(64 * 1024 * 1024, 97));
+    const { server, port } = await serve((_req, res) => {
+      res.setHeader('content-type', 'text/html');
+      res.setHeader('content-encoding', 'gzip');
+      res.end(bomb);
+    });
+    try {
+      const res = await call(port);
+      const text = await readCapped(res, 1000);
+      expect(text).toHaveLength(1000);
+    } finally {
+      server.close();
+    }
+  });
 });
