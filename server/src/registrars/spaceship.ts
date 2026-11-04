@@ -168,8 +168,8 @@ function toQuote(
   return {
     registrar: 'spaceship',
     domain,
-    // Only "available" is documented; any other value is treated as not available.
-    availability: availability.result === 'available' ? 'available' : 'unavailable',
+    // Only "available" is documented. Any other value is unknown, never "unavailable".
+    availability: availability.result === 'available' ? 'available' : 'unknown',
     premium,
     firstYear: register && register.currency === currency ? register.amount : null,
     renewal: renew && renew.currency === currency ? renew.amount : null,
@@ -177,7 +177,7 @@ function toQuote(
     checkedAt,
     ...(availability.result === 'available'
       ? {}
-      : { reason: `Spaceship result: ${availability.result}` }),
+      : { reason: `undocumented Spaceship result: ${availability.result}` }),
   };
 }
 

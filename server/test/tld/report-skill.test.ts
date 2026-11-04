@@ -74,4 +74,9 @@ describe('report skill', () => {
       if (/^(?:tld|registrar)_/.test(token)) expect(registered.has(token), token).toBe(true);
     }
   });
+
+  it('does not demote a domain on an unknown live availability', async () => {
+    const text = await read('SKILL.md');
+    expect(text).toContain('A live `availability` of `unknown` never changes the stored check');
+  });
 });

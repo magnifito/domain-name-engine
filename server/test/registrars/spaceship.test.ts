@@ -50,9 +50,10 @@ describe('Spaceship client', () => {
     });
   });
 
-  it('treats any result other than "available" as unavailable', async () => {
+  it('maps an undocumented result value to unknown with a reason, not to unavailable', async () => {
     const [quote] = await client().client.quote(['google.com']);
-    expect(quote).toMatchObject({ availability: 'unavailable', reason: 'Spaceship result: taken' });
+    expect(quote).toMatchObject({ availability: 'unknown' });
+    expect(quote?.reason).toContain('taken');
   });
 
   it('uses premium pricing for a premium domain', async () => {

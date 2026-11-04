@@ -25,7 +25,7 @@ Ranks the shortlisted names of one project and writes `report.md` into the proje
    Give each name a one-sentence reason for its place, built only from the project data.
 4. **Collect the domains to price.** For each shortlisted name, take every domain whose stored `check_domains` status is `likely_available`. Price only those. Domains with any other status go in the "Not available or unknown" list with their status, source, and `checkedAt`.
 5. **Get TLD facts.** Call `tld_info` once per distinct TLD in that list.
-6. **Get quotes.** Call `registrar_quote` with the domains from step 4, in batches of at most 20. If the result has `mode: "live"`, a live `availability` of `unavailable` overrides the stored check: move that domain to "Not available or unknown" and cite the registrar API and its `checkedAt`. If a registrar entry has a `reason`, show it.
+6. **Get quotes.** Call `registrar_quote` with the domains from step 4, in batches of at most 20. If the result has `mode: "live"`, a live `availability` of `unavailable` overrides the stored check: move that domain to "Not available or unknown" and cite the registrar API and its `checkedAt`. A live `availability` of `unknown` never changes the stored check: keep the domain where it is and show the `reason`. If a registrar entry has a `reason`, show it.
 7. **Write the report.** Follow `references/report-template.md`. Write the file to `paths.reportFile` from `project_get`, replacing any earlier report. Do not write it anywhere else.
 8. **Tell the user** where the file is, the top three names with their best domain, and the cheapest 3-year option for each. Repeat the price label with every price you mention.
 
