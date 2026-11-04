@@ -109,4 +109,13 @@ describe('Spaceship TLD prices', () => {
     expect(rows).toHaveLength(1);
     expect(calls.map((c) => c.url)).toEqual([`${SPACESHIP_API}/v1/tlds/pricing?take=25&skip=0`]);
   });
+
+  it.each([
+    [{ items: [] }],
+    [{ items: [{ tld: 'site', prices: {} }] }],
+    [{ items: [{ tld: 'site' }], total: 'many' }],
+  ])('fails when total is missing or not a number (%j)', async (page) => {
+    const { http } = fakeHttp([[`${SPACESHIP_API}/v1/tlds/pricing`, () => Response.json(page)]]);
+    await expect(fetchSpaceshipTldPrices(CREDS, http, '2026-11-04')).rejects.toThrow('total');
+  });
 });

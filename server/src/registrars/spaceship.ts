@@ -227,8 +227,12 @@ export async function fetchSpaceshipTldPrices(
       total?: number;
     };
     rows.push(...parseSpaceshipTldPrices(json, checkedAt));
+    // Without a numeric total we cannot tell a complete list from a cut-off one.
+    if (typeof json.total !== 'number' || !Number.isFinite(json.total)) {
+      throw new Error('Spaceship TLD pricing response has no numeric total');
+    }
     const count = json.items?.length ?? 0;
-    if (count === 0 || skip + count >= (json.total ?? 0)) break;
+    if (count === 0 || skip + count >= json.total) break;
   }
   return rows;
 }
