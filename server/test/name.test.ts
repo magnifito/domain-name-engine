@@ -17,7 +17,7 @@ describe('normalizeLabel', () => {
     expect(normalizeLabel('xn--bcher-kva')).toBe('xn--bcher-kva');
   });
 
-  it.each(['', '-acme', 'acme-', 'ac me', 'acme.com', 'a'.repeat(64), 'ácme'])(
+  it.each(['', '-acme', 'acme-', 'ac me', 'acme.com', 'a'.repeat(64), 'ácme', '\u212Aeys'])(
     'rejects %j',
     (input) => {
       expect(() => normalizeLabel(input)).toThrow(ValidationError);
@@ -26,6 +26,11 @@ describe('normalizeLabel', () => {
 });
 
 describe('normalizeTld', () => {
+  it('accepts a 63-character TLD label and rejects Unicode case-folding tricks', () => {
+    expect(normalizeTld('a'.repeat(63))).toBe('a'.repeat(63));
+    expect(() => normalizeTld('\u212A')).toThrow(ValidationError);
+  });
+
   it('strips a leading dot and lowercases', () => {
     expect(normalizeTld('.IO')).toBe('io');
   });
@@ -51,6 +56,20 @@ describe('joinDomain and splitDomain', () => {
 
   it('splits at the first dot', () => {
     expect(splitDomain('Acme.co.uk.')).toEqual({ label: 'acme', tld: 'co.uk' });
+  });
+
+  it('accepts a 63-character label', () => {
+    expect(splitDomain(`${'a'.repeat(63)}.com`).label).toBe('a'.repeat(63));
+  });
+
+  it('propagates label and TLD errors', () => {
+    expect(() => joinDomain('-bad', 'com')).toThrow(ValidationError);
+    expect(() => joinDomain('acme', 'not.known')).toThrow(ValidationError);
+    expect(() => splitDomain('-bad.com')).toThrow(ValidationError);
+  });
+
+  it('rejects an empty label before the TLD', () => {
+    expect(() => splitDomain('acme..com')).toThrow(ValidationError);
   });
 
   it('rejects a domain without a TLD', () => {

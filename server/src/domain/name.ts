@@ -3,7 +3,9 @@ export class ValidationError extends Error {
 }
 
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const TLD_PART = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const TLD_PART = LABEL;
+// toLowerCase() folds some non-ASCII characters (such as the Kelvin sign) into ASCII letters.
+const isAscii = (text: string): boolean => [...text].every((ch) => (ch.codePointAt(0) ?? 0) < 128);
 
 // Public second-level registry suffixes accepted as multi-label TLDs.
 export const MULTI_LABEL_TLDS: ReadonlySet<string> = new Set([
@@ -47,7 +49,7 @@ export const MULTI_LABEL_TLDS: ReadonlySet<string> = new Set([
 
 export function normalizeLabel(input: string): string {
   const label = input.trim().toLowerCase();
-  if (!LABEL.test(label)) {
+  if (!isAscii(input) || !LABEL.test(label)) {
     throw new ValidationError(
       `"${input}" is not a valid domain label: use 1-63 ASCII letters, digits, or inner hyphens (punycode for non-ASCII).`,
     );
@@ -58,7 +60,7 @@ export function normalizeLabel(input: string): string {
 export function normalizeTld(input: string): string {
   const tld = input.trim().toLowerCase().replace(/^\./, '');
   const parts = tld.split('.');
-  if (parts.length > 3 || !parts.every((part) => TLD_PART.test(part))) {
+  if (!isAscii(input) || parts.length > 3 || !parts.every((part) => TLD_PART.test(part))) {
     throw new ValidationError(`"${input}" is not a valid TLD.`);
   }
   if (parts.length > 1 && !MULTI_LABEL_TLDS.has(tld)) {
@@ -77,5 +79,6 @@ export function splitDomain(domain: string): { label: string; tld: string } {
   const clean = domain.trim().toLowerCase().replace(/\.$/, '');
   const dot = clean.indexOf('.');
   if (dot <= 0) throw new ValidationError(`"${domain}" has no TLD.`);
+  if (clean[dot + 1] === '.') throw new ValidationError(`"${domain}" has an empty label.`);
   return { label: normalizeLabel(clean.slice(0, dot)), tld: normalizeTld(clean.slice(dot + 1)) };
 }

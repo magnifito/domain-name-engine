@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -19,7 +19,37 @@ describe('writeFileAtomic', () => {
   });
 });
 
+describe('writeFileAtomic failure', () => {
+  it('removes the temp file when the rename fails', async () => {
+    const dir = await tempDir();
+    await mkdir(join(dir, 'target'));
+    await expect(writeFileAtomic(join(dir, 'target'), 'x')).rejects.toThrow();
+    expect(await readdir(dir)).toEqual(['target']);
+  });
+});
+
 describe('DiskCache', () => {
+  it('returns undefined when the cache directory does not exist', async () => {
+    const cache = new DiskCache(join(await tempDir(), 'missing'));
+    expect(await cache.get('k')).toBeUndefined();
+  });
+
+  it('overwrites a key and keeps keys isolated', async () => {
+    const cache = new DiskCache(await tempDir());
+    await cache.set('a', 1, 10_000);
+    await cache.set('b', 2, 10_000);
+    await cache.set('a', 3, 10_000);
+    expect(await cache.get('a')).toBe(3);
+    expect(await cache.get('b')).toBe(2);
+  });
+
+  it('does not store values with a negative TTL', async () => {
+    const dir = await tempDir();
+    const cache = new DiskCache(dir);
+    await cache.set('k', 1, -5);
+    expect(await readdir(dir)).toEqual([]);
+  });
+
   it('returns undefined on a miss', async () => {
     const cache = new DiskCache(await tempDir());
     expect(await cache.get('nope')).toBeUndefined();
