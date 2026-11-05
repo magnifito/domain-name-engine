@@ -10,17 +10,17 @@ Everything runs on your machine. No account is needed. Registrar and research AP
 
 ```
 /plugin marketplace add magnifito/domain-name-engine
-/plugin install domain-name-engine@magnifito
+/plugin install domain-name-engine@domain-name-engine
 ```
 
 ### OpenAI Codex
 
 ```sh
 codex plugin marketplace add magnifito/domain-name-engine
-codex plugin add domain-name-engine@magnifito
+codex plugin add domain-name-engine@domain-name-engine
 ```
 
-Start a new Codex session after you install. Codex loads the six skills and the `domain-engine` MCP server. Run a skill by name, for example `$find-domain`, or just ask "help me name my startup". To update, run `codex plugin marketplace upgrade magnifito`.
+Start a new Codex session after you install. Codex loads the six skills and the `domain-engine` MCP server. Run a skill by name, for example `$find-domain`, or just ask "help me name my startup". To update, run `codex plugin marketplace upgrade domain-name-engine`.
 
 Both hosts need Node.js 20 or later. The server ships as one bundled file, so there is no `npm install` step.
 
