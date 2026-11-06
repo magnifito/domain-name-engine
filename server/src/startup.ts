@@ -1,6 +1,8 @@
+import { engineHome } from './config.js';
 import { readCredentials, redact, secretValues } from './registrars/credentials.js';
 import { USER_CONFIG_PREFIX } from './util/env.js';
 import { errorMessage } from './util/errors.js';
+import { createKeySource, keyFilePath } from './util/key-file.js';
 
 /** Keys of the research tools. Their values are never read here, only redacted from messages. */
 const RESEARCH_KEYS = [
@@ -43,9 +45,16 @@ export async function runStartup(
   try {
     await start();
   } catch (error) {
+    let env = io.env;
+    try {
+      // Keys from the key file are redacted too.
+      env = createKeySource(io.env, keyFilePath(engineHome(io.env))).env();
+    } catch {
+      // Keep the plain env when the key file cannot be read.
+    }
     const message = redact(
       errorMessage(error),
-      [...secretValues(readCredentials(io.env)), ...researchSecrets(io.env)].sort(
+      [...secretValues(readCredentials(env)), ...researchSecrets(env)].sort(
         (a, b) => b.length - a.length,
       ),
     );

@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { lookup, resolveNs } from "node:dns/promises";
 import { connect, isIP } from "node:net";
 import { request } from "node:http";
@@ -8949,6 +8950,198 @@ function bundledTables() {
 	};
 	return bundled;
 }
+// src/util/key-file.ts
+/** The file name of the key file inside the engine home folder. */
+const KEY_FILE_NAME = "keys.env";
+/** Every key name the server reads. The key file accepts only these names. */
+const KEY_NAMES = [
+	"SPACESHIP_API_KEY",
+	"SPACESHIP_API_SECRET",
+	"NAMECHEAP_API_USER",
+	"NAMECHEAP_API_KEY",
+	"NAMECHEAP_CLIENT_IP",
+	"CLOUDFLARE_API_TOKEN",
+	"CLOUDFLARE_ACCOUNT_ID",
+	"GITHUB_TOKEN",
+	"REDDIT_CLIENT_ID",
+	"REDDIT_CLIENT_SECRET",
+	"YOUTUBE_API_KEY",
+	"EUIPO_CLIENT_ID",
+	"EUIPO_CLIENT_SECRET",
+	"EUIPO_ENV"
+];
+const KNOWN = new Set(KEY_NAMES);
+const KEY_FILE_TEMPLATE = `# domain-name-engine API keys. All keys are optional.
+# Paste each value after its = sign and save. No quotes needed. The server
+# reads this file again when it changes, so there is no restart.
+# How to get each key: https://github.com/magnifito/domain-name-engine/blob/main/docs/api-keys.md
+# Never paste keys into a chat. Keys in the Claude Code plugin settings
+# and environment variables win over this file.
+
+# Spaceship: API Manager, domains:read scope only
+SPACESHIP_API_KEY=
+SPACESHIP_API_SECRET=
+
+# Namecheap: Profile, Tools, API Access. NAMECHEAP_CLIENT_IP is your allow-listed public IP.
+NAMECHEAP_API_USER=
+NAMECHEAP_API_KEY=
+NAMECHEAP_CLIENT_IP=
+
+# Cloudflare: API Tokens
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ACCOUNT_ID=
+
+# Research: GitHub, Reddit, YouTube handle checks and the EUIPO trademark search
+GITHUB_TOKEN=
+REDDIT_CLIENT_ID=
+REDDIT_CLIENT_SECRET=
+YOUTUBE_API_KEY=
+EUIPO_CLIENT_ID=
+EUIPO_CLIENT_SECRET=
+# Set to sandbox to use EUIPO test data
+EUIPO_ENV=
+`;
+function keyFilePath(home) {
+	return join(home, KEY_FILE_NAME);
+}
+/**
+* Parses NAME=value lines. Blank lines, # comments, an "export " prefix, matching quotes
+* around the value, Windows line endings and a byte order mark are all accepted.
+* Unknown names and empty values are ignored.
+*/
+function parseKeyFile(text) {
+	const values = {};
+	for (const raw of text.replace(/^﻿/, "").split(/\r?\n/)) {
+		const match = /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=(.*)$/.exec(raw);
+		if (!match?.[1] || !KNOWN.has(match[1])) continue;
+		let value = (match[2] ?? "").trim();
+		const quote = value[0];
+		if (value.length >= 2 && (quote === "\"" || quote === "'") && value.endsWith(quote)) value = value.slice(1, -1).trim();
+		else value = value.replace(/\s+#.*$/, "");
+		if (value) values[match[1]] = value;
+	}
+	return values;
+}
+const nodeKeyFileFs = {
+	stat: (path) => {
+		try {
+			return statSync(path);
+		} catch (error) {
+			if (error.code === "ENOENT") return void 0;
+			throw error;
+		}
+	},
+	read: (path) => readFileSync(path, "utf8"),
+	create: (path, text) => {
+		mkdirSync(dirname(path), {
+			recursive: true,
+			mode: 448
+		});
+		writeFileSync(path, text, {
+			mode: 384,
+			flag: "wx"
+		});
+	},
+	chmodPrivate: (path) => chmodSync(path, 384),
+	platform: process.platform
+};
+function mergeEnv(env, values) {
+	const merged = { ...env };
+	for (const [name, value] of Object.entries(values)) if (readEnv(env, name) === void 0) merged[name] = value;
+	return merged;
+}
+/**
+* Reads the key file at path. A stat on each call detects edits, so a saved change applies
+* to the next tool call without a restart. Read errors leave the file's keys unset.
+*/
+function createKeySource(env, path, fs = nodeKeyFileFs) {
+	let stamp = "";
+	let values = {};
+	let merged = env;
+	let info = {
+		exists: false,
+		mode: 0
+	};
+	const refresh = () => {
+		let next = "missing";
+		let stat;
+		try {
+			stat = fs.stat(path);
+			if (stat) next = `${stat.mtimeMs}:${stat.size}:${stat.mode}`;
+		} catch (error) {
+			next = `error:${error.code ?? "unknown"}`;
+		}
+		if (next === stamp) return;
+		stamp = next;
+		values = {};
+		info = {
+			exists: stat !== void 0,
+			mode: stat?.mode ?? 0
+		};
+		if (stat) try {
+			values = parseKeyFile(fs.read(path));
+		} catch (error) {
+			info.error = `cannot read the key file (${error.code ?? "error"})`;
+		}
+		else if (next.startsWith("error:")) info.error = `cannot check the key file (${next.slice(6)})`;
+		merged = Object.keys(values).length > 0 ? mergeEnv(env, values) : env;
+	};
+	const status = () => {
+		refresh();
+		const result = {
+			path,
+			exists: info.exists,
+			namesSet: KEY_NAMES.filter((name) => values[name] !== void 0),
+			readableByOthers: info.exists && fs.platform !== "win32" && (info.mode & 63) !== 0
+		};
+		if (info.error) result.error = info.error;
+		return result;
+	};
+	return {
+		env: () => {
+			refresh();
+			return merged;
+		},
+		status,
+		setup: () => {
+			let created = false;
+			try {
+				fs.create(path, KEY_FILE_TEMPLATE);
+				created = true;
+			} catch (error) {
+				if (error.code !== "EEXIST") throw error;
+			}
+			let permissionsFixed = false;
+			if (!created && status().readableByOthers) {
+				fs.chmodPrivate(path);
+				permissionsFixed = true;
+			}
+			return {
+				...status(),
+				created,
+				permissionsFixed
+			};
+		}
+	};
+}
+/** A key source without a file, for tests and callers that only use env variables. */
+function envOnlyKeySource(env) {
+	const status = () => ({
+		path: "",
+		exists: false,
+		namesSet: [],
+		readableByOthers: false
+	});
+	return {
+		env: () => env,
+		status,
+		setup: () => ({
+			...status(),
+			created: false,
+			permissionsFixed: false
+		})
+	};
+}
 // src/registrars/types.ts
 function chunk(items, size) {
 	const out = [];
@@ -9124,9 +9317,10 @@ const OTHER_ENV_VARS = [
 		usedFor: "search_trademarks: \"sandbox\" for EUIPO test data"
 	}
 ];
-const STATUS_NOTE = "Key values are never returned, logged, or stored. Set keys in the Claude Code plugin settings (/plugin) or as env variables with the names listed here. Without keys, registrar_quote returns bundled table prices only.";
-function registrarStatus(env = process.env) {
-	return {
+const STATUS_NOTE = "Key values are never returned or logged. Set keys in the Claude Code plugin settings (/plugin), in the key file (run keys_setup to create it, then the user edits it in a text editor), or as env variables with the names listed here. Never ask the user to paste a key into the chat. Without keys, registrar_quote returns bundled table prices only.";
+const OPEN_FILE_WARNING = "Other users on this machine can read the key file. Run keys_setup to make it private.";
+function registrarStatus(env = process.env, keyFile) {
+	const report = {
 		registrars: REGISTRARS.map((registrar) => {
 			const envVars = [...ENV_VARS[registrar]];
 			const missing = envVars.filter((name) => !readEnv(env, name));
@@ -9146,6 +9340,11 @@ function registrarStatus(env = process.env) {
 		})),
 		note: STATUS_NOTE
 	};
+	if (keyFile?.path) report.keyFile = keyFile.readableByOthers ? {
+		...keyFile,
+		warning: OPEN_FILE_WARNING
+	} : keyFile;
+	return report;
 }
 // src/registrars/namecheap.ts
 const NAMECHEAP_API = "https://api.namecheap.com/xml.response";
@@ -9518,20 +9717,35 @@ function liveClients(creds, deps) {
 	return clients;
 }
 function createRegistrarRuntime(deps) {
-	const creds = readCredentials(deps.env);
-	const secrets = secretValues(creds);
-	const clients = liveClients(creds, deps);
+	const keys = deps.keys ?? envOnlyKeySource(deps.env);
 	const tables = () => deps.tables ?? bundledTables();
+	let live;
+	const current = () => {
+		const env = keys.env();
+		if (live?.env !== env) {
+			const creds = readCredentials(env);
+			live = {
+				env,
+				secrets: secretValues(creds),
+				clients: liveClients(creds, deps)
+			};
+		}
+		return live;
+	};
 	return {
 		tldInfo: (tld) => tldInfo(tld, tables()),
-		registrarQuote: (domains) => quoteDomains(domains, {
-			tables: tables(),
-			clients,
-			cache: deps.cache,
-			secrets,
-			now: deps.now
-		}),
-		registrarStatus: () => registrarStatus(deps.env)
+		registrarQuote: (domains) => {
+			const { secrets, clients } = current();
+			return quoteDomains(domains, {
+				tables: tables(),
+				clients,
+				cache: deps.cache,
+				secrets,
+				now: deps.now
+			});
+		},
+		registrarStatus: () => registrarStatus(keys.env(), keys.status()),
+		keysSetup: () => keys.setup()
 	};
 }
 // src/sources/rdap.ts
@@ -10768,14 +10982,25 @@ async function searchTrademarks(query, deps) {
 // src/research/runtime-part.ts
 function createResearchRuntime(deps) {
 	const { http, limiter, cache } = deps;
-	const keys = readResearchKeys(deps.env);
+	const currentEnv = deps.keys ? () => deps.keys?.env() ?? deps.env : () => deps.env;
 	const resolveNs$1 = deps.resolveNs ?? resolveNs;
 	const homepageHttp = createGuardedHttp({
 		limiter,
 		...deps.homepage
 	});
-	const checkers = createCheckers(http, keys);
-	const euipo = keys.euipo ? createEuipoClient(http, keys.euipo) : void 0;
+	let keyed;
+	const current = () => {
+		const env = currentEnv();
+		if (keyed?.env !== env) {
+			const keys = readResearchKeys(env);
+			keyed = {
+				env,
+				checkers: createCheckers(http, keys),
+				euipo: keys.euipo ? createEuipoClient(http, keys.euipo) : void 0
+			};
+		}
+		return keyed;
+	};
 	return {
 		profileDomain: (domain) => profileDomain(domain, {
 			cache,
@@ -10798,11 +11023,11 @@ function createResearchRuntime(deps) {
 			homepage: (d) => fetchHomepage(d, homepageHttp)
 		}),
 		checkHandles: (handles, platforms) => checkHandles(handles, platforms, {
-			checkers,
+			checkers: current().checkers,
 			cache
 		}),
 		searchTrademarks: (query) => searchTrademarks(query, {
-			euipo,
+			euipo: current().euipo,
 			cache
 		})
 	};
@@ -12230,6 +12455,7 @@ function createRuntime(env = process.env) {
 	const limiter = new HostLimiter();
 	const http = createHttp({ limiter });
 	const whoisQuery = tcpWhoisQuery();
+	const keys = createKeySource(env, keyFilePath(paths.home));
 	let servers;
 	const getServers = () => {
 		servers ??= loadRdapServers(http, cache).catch((error) => {
@@ -12263,13 +12489,15 @@ function createRuntime(env = process.env) {
 			limiter,
 			cache,
 			env,
+			keys,
 			rdapServers: getServers,
 			whoisQuery
 		}),
 		...createRegistrarRuntime({
 			http,
 			cache,
-			env
+			env,
+			keys
 		})
 	};
 }
@@ -26376,6 +26604,29 @@ function registerPlan3Tools(server, rt) {
 	registerCheckHandles(server, rt);
 	registerSearchTrademarks(server, rt);
 }
+// src/tools/keys-setup.ts
+const KEYS_SETUP_NEXT_STEPS = "Tell the user to open the file at \"path\" in any text editor, paste each key after its = sign, and save. The server picks up the change on the next tool call, with no restart. Then run registrar_status to confirm. Never ask the user to paste a key into the chat, and never read or print the file contents.";
+function registerKeysSetup(server, rt) {
+	server.registerTool("keys_setup", {
+		title: "Create the API key file",
+		description: "Creates the optional API key file (keys.env in the engine folder) from a template with every key name and an empty value, readable only by the current user. Never overwrites an existing file; makes an existing file private when other users can read it. Returns the file path and which names have a value, never the values. Use it when the user wants to add registrar or research API keys and is not using the Claude Code plugin settings form.",
+		annotations: {
+			readOnlyHint: false,
+			destructiveHint: false,
+			idempotentHint: true,
+			openWorldHint: false
+		}
+	}, async () => {
+		try {
+			return toolJson({
+				...rt.keysSetup(),
+				nextSteps: KEYS_SETUP_NEXT_STEPS
+			});
+		} catch (error) {
+			return toolError(`Could not create the key file: ${errorMessage(error)}`);
+		}
+	});
+}
 // src/tools/registrar-quote.ts
 function registerRegistrarQuote(server, rt) {
 	server.registerTool("registrar_quote", {
@@ -26399,7 +26650,7 @@ function registerRegistrarQuote(server, rt) {
 function registerRegistrarStatus(server, rt) {
 	server.registerTool("registrar_status", {
 		title: "Registrar API key status",
-		description: "Which registrars (Spaceship, Namecheap, Cloudflare) have API keys configured through environment variables, and which variable names are missing. Also lists the optional research key names and whether each is set. Never returns key values.",
+		description: "Which registrars (Spaceship, Namecheap, Cloudflare) have API keys configured (plugin settings, key file, or environment variables), and which names are missing. Also lists the optional research key names and whether each is set. Shows where the key file is and which names it sets. Never returns key values.",
 		annotations: {
 			readOnlyHint: true,
 			openWorldHint: false
@@ -26432,6 +26683,7 @@ function registerPlan4Tools(server, rt) {
 	registerTldInfo(server, rt);
 	registerRegistrarQuote(server, rt);
 	registerRegistrarStatus(server, rt);
+	registerKeysSetup(server, rt);
 }
 // src/server.ts
 const SERVER_INFO = {
@@ -26472,7 +26724,11 @@ async function runStartup(start, io = processIo) {
 	try {
 		await start();
 	} catch (error) {
-		const message = redact(errorMessage(error), [...secretValues(readCredentials(io.env)), ...researchSecrets(io.env)].sort((a, b) => b.length - a.length));
+		let env = io.env;
+		try {
+			env = createKeySource(io.env, keyFilePath(engineHome(io.env))).env();
+		} catch {}
+		const message = redact(errorMessage(error), [...secretValues(readCredentials(env)), ...researchSecrets(env)].sort((a, b) => b.length - a.length));
 		io.stderr(`domain-name-engine: failed to start: ${message}\n`);
 		io.exit(1);
 	}

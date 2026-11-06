@@ -52,11 +52,18 @@ The skills call these tools. You can also call them directly.
 | `ruleset_list`, `ruleset_get`, `ruleset_save`, `ruleset_delete` | Built-in and custom naming rulesets |
 | `tld_info` | For one TLD: registrars that sell it, table prices per registrar, reputation |
 | `registrar_quote` | For exact domains: per-registrar prices, plus live availability and the premium flag when keys are set |
-| `registrar_status` | Which registrar and research keys are set. Never returns key values. |
+| `registrar_status` | Which registrar and research keys are set, and where the key file is. Never returns key values. |
+| `keys_setup` | Creates the private key file from a template and returns its path. Never reads or returns key values. |
 
 ## Optional API keys
 
-All keys are optional. In Claude Code, paste them into the plugin settings form that appears when you enable the plugin, or later under `/plugin`. Claude Code keeps secret fields in the system credential store (the Keychain on macOS) and passes them only to the plugin's server. In Codex, or if you prefer, set them as environment variables with the names below. Keys never appear in tool output, logs, the cache, or project files. Ask the agent to run `registrar_status` to see which keys the server found.
+All keys are optional. Pick one place for them:
+
+- **Claude Code:** paste them into the plugin settings form that appears when you enable the plugin, or later under `/plugin`. Claude Code keeps secret fields in the system credential store. This is the most secure option.
+- **Codex, or any host, on macOS, Linux, or Windows:** ask the agent to "set up my API keys". The `keys_setup` tool creates `~/.domain-engine/keys.env` (readable by you only) and lists every key name. Open it in a text editor, paste your keys after the `=` signs, and save. No restart needed.
+- **Environment variables** with the names below also work.
+
+Keys never appear in tool output, logs, the cache, or project files. Never paste a key into the chat. Ask the agent to run `registrar_status` to see which keys the server found.
 
 For step-by-step instructions on getting each key, see [docs/api-keys.md](docs/api-keys.md).
 
@@ -112,7 +119,7 @@ The engine never scrapes registrar web pages. Spaceship and Namecheap price page
 
 ## Data and privacy
 
-- Projects, custom rulesets, and the cache live in `~/.domain-engine/`. Set `DOMAIN_ENGINE_HOME` to use another folder.
+- Projects, custom rulesets, the cache, and the optional `keys.env` key file live in `~/.domain-engine/`. Set `DOMAIN_ENGINE_HOME` to use another folder.
 - Reports are written to `~/.domain-engine/projects/<slug>/report.md`.
 - The server sends requests to RDAP and WHOIS servers, DNS resolvers, the research APIs, and the registrar APIs whose keys you set. Requests carry a generic `User-Agent` with the plugin name and repository URL, and no personal data.
 - Requests are rate limited per host, 1 request per second by default, with retries on HTTP 429 and 5xx for RDAP and registrar HTTP requests only. The homepage fetch and WHOIS make one try.

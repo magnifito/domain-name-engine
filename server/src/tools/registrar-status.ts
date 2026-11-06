@@ -11,7 +11,7 @@ export function registerRegistrarStatus(
     {
       title: 'Registrar API key status',
       description:
-        'Which registrars (Spaceship, Namecheap, Cloudflare) have API keys configured through environment variables, and which variable names are missing. Also lists the optional research key names and whether each is set. Never returns key values.',
+        'Which registrars (Spaceship, Namecheap, Cloudflare) have API keys configured (plugin settings, key file, or environment variables), and which names are missing. Also lists the optional research key names and whether each is set. Shows where the key file is and which names it sets. Never returns key values.',
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async () => toolJson(rt.registrarStatus()),

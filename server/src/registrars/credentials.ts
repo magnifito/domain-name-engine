@@ -1,5 +1,6 @@
 import { REGISTRAR_NAMES, REGISTRARS, type RegistrarId } from '../tld/schema.js';
 import { readEnv as read } from '../util/env.js';
+import type { KeyFileStatus } from '../util/key-file.js';
 
 export interface SpaceshipCreds {
   apiKey: string;
@@ -86,6 +87,8 @@ export interface OtherKeyStatus {
 export interface RegistrarStatusReport {
   registrars: RegistrarStatusEntry[];
   otherKeys: OtherKeyStatus[];
+  /** The key file: where it is and which names it sets. Absent when the server runs without one. */
+  keyFile?: KeyFileStatus & { warning?: string };
   note: string;
 }
 
@@ -101,10 +104,16 @@ export const OTHER_ENV_VARS: ReadonlyArray<{ name: string; usedFor: string }> = 
 ];
 
 export const STATUS_NOTE =
-  'Key values are never returned, logged, or stored. Set keys in the Claude Code plugin settings (/plugin) or as env variables with the names listed here. Without keys, registrar_quote returns bundled table prices only.';
+  'Key values are never returned or logged. Set keys in the Claude Code plugin settings (/plugin), in the key file (run keys_setup to create it, then the user edits it in a text editor), or as env variables with the names listed here. Never ask the user to paste a key into the chat. Without keys, registrar_quote returns bundled table prices only.';
 
-export function registrarStatus(env: NodeJS.ProcessEnv = process.env): RegistrarStatusReport {
-  return {
+export const OPEN_FILE_WARNING =
+  'Other users on this machine can read the key file. Run keys_setup to make it private.';
+
+export function registrarStatus(
+  env: NodeJS.ProcessEnv = process.env,
+  keyFile?: KeyFileStatus,
+): RegistrarStatusReport {
+  const report: RegistrarStatusReport = {
     registrars: REGISTRARS.map((registrar) => {
       const envVars = [...ENV_VARS[registrar]];
       const missing = envVars.filter((name) => !read(env, name));
@@ -124,4 +133,10 @@ export function registrarStatus(env: NodeJS.ProcessEnv = process.env): Registrar
     })),
     note: STATUS_NOTE,
   };
+  if (keyFile?.path) {
+    report.keyFile = keyFile.readableByOthers
+      ? { ...keyFile, warning: OPEN_FILE_WARNING }
+      : keyFile;
+  }
+  return report;
 }

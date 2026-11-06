@@ -63,3 +63,25 @@ describe('createRegistrarRuntime', () => {
     );
   });
 });
+
+describe('createRegistrarRuntime with a key file', () => {
+  it('uses keys saved to the file after start, without a restart', async () => {
+    const { createKeySource, keyFilePath } = await import('../../src/util/key-file.js');
+    const { writeFile } = await import('node:fs/promises');
+    const d = await deps({});
+    const path = keyFilePath(await mkdtemp(join(tmpdir(), 'dne-rt-keys-')));
+    const keys = createKeySource({}, path);
+    const rt = createRegistrarRuntime({ ...d, keys });
+
+    expect(rt.keysSetup()).toMatchObject({ created: true, path });
+    expect(rt.registrarStatus().registrars[0]?.configured).toBe(false);
+    expect((await rt.registrarQuote(['zentrova.site'])).mode).toBe('table');
+
+    await writeFile(path, 'SPACESHIP_API_KEY=ss-key-1234\nSPACESHIP_API_SECRET=ss-secret-5678\n');
+    const status = rt.registrarStatus();
+    expect(status.registrars[0]).toMatchObject({ registrar: 'spaceship', configured: true });
+    expect(status.keyFile).toMatchObject({ path, exists: true });
+    expect(JSON.stringify(status)).not.toContain('ss-key-1234');
+    expect((await rt.registrarQuote(['zentrova.site'])).mode).toBe('live');
+  });
+});

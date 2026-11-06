@@ -10,6 +10,7 @@ import { hasNameservers } from './sources/dns.js';
 import { loadRdapServers, type RdapServers, rdapLookup } from './sources/rdap.js';
 import { tcpWhoisQuery, whoisLookup } from './sources/whois.js';
 import { createStoreRuntime, type StoreRuntime } from './store/runtime-part.js';
+import { createKeySource, keyFilePath } from './util/key-file.js';
 
 export interface Runtime extends StoreRuntime, ResearchRuntime, RegistrarRuntime {
   checkDomains(domains: string[]): Promise<DomainCheck[]>;
@@ -21,6 +22,7 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
   const limiter = new HostLimiter();
   const http = createHttp({ limiter });
   const whoisQuery = tcpWhoisQuery();
+  const keys = createKeySource(env, keyFilePath(paths.home));
 
   let servers: Promise<RdapServers> | undefined;
   const getServers = (): Promise<RdapServers> => {
@@ -42,7 +44,15 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
   return {
     checkDomains: (domains) => checkDomains(domains, deps),
     ...createStoreRuntime(paths, { http, limiter, cache }),
-    ...createResearchRuntime({ http, limiter, cache, env, rdapServers: getServers, whoisQuery }),
-    ...createRegistrarRuntime({ http, cache, env }),
+    ...createResearchRuntime({
+      http,
+      limiter,
+      cache,
+      env,
+      keys,
+      rdapServers: getServers,
+      whoisQuery,
+    }),
+    ...createRegistrarRuntime({ http, cache, env, keys }),
   };
 }

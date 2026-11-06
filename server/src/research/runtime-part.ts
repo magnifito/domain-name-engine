@@ -4,6 +4,7 @@ import type { HttpFetch } from '../http/http.js';
 import type { HostLimiter } from '../limiter/limiter.js';
 import { type RdapServers, rdapLookup } from '../sources/rdap.js';
 import { type WhoisQuery, whoisLookup } from '../sources/whois.js';
+import type { KeySource } from '../util/key-file.js';
 import { checkHandles, createCheckers, type HandleCheck } from './handles/check.js';
 import type { Platform } from './handles/platforms.js';
 import { readResearchKeys } from './keys.js';
@@ -28,6 +29,8 @@ export interface ResearchRuntimeDeps {
   limiter: HostLimiter;
   cache: DiskCache;
   env: NodeJS.ProcessEnv;
+  /** Key file reader. Without it only env variables count. */
+  keys?: Pick<KeySource, 'env'>;
   rdapServers: () => Promise<RdapServers>;
   whoisQuery: WhoisQuery;
   resolveNs?: (domain: string) => Promise<string[]>;
@@ -37,12 +40,30 @@ export interface ResearchRuntimeDeps {
 
 export function createResearchRuntime(deps: ResearchRuntimeDeps): ResearchRuntime {
   const { http, limiter, cache } = deps;
-  const keys = readResearchKeys(deps.env);
+  const currentEnv = deps.keys ? () => deps.keys?.env() ?? deps.env : () => deps.env;
   const resolveNs = deps.resolveNs ?? dnsResolveNs;
   // Homepages are untrusted URLs: vetted addresses only, pinned, no retries, shared limiter.
   const homepageHttp = createGuardedHttp({ limiter, ...deps.homepage });
-  const checkers = createCheckers(http, keys);
-  const euipo = keys.euipo ? createEuipoClient(http, keys.euipo) : undefined;
+  // Rebuild the keyed clients only when the keys change.
+  let keyed:
+    | {
+        env: NodeJS.ProcessEnv;
+        checkers: ReturnType<typeof createCheckers>;
+        euipo: ReturnType<typeof createEuipoClient> | undefined;
+      }
+    | undefined;
+  const current = () => {
+    const env = currentEnv();
+    if (keyed?.env !== env) {
+      const keys = readResearchKeys(env);
+      keyed = {
+        env,
+        checkers: createCheckers(http, keys),
+        euipo: keys.euipo ? createEuipoClient(http, keys.euipo) : undefined,
+      };
+    }
+    return keyed;
+  };
 
   return {
     profileDomain: (domain) =>
@@ -59,7 +80,8 @@ export function createResearchRuntime(deps: ResearchRuntimeDeps): ResearchRuntim
         },
         homepage: (d) => fetchHomepage(d, homepageHttp),
       }),
-    checkHandles: (handles, platforms) => checkHandles(handles, platforms, { checkers, cache }),
-    searchTrademarks: (query) => searchTrademarks(query, { euipo, cache }),
+    checkHandles: (handles, platforms) =>
+      checkHandles(handles, platforms, { checkers: current().checkers, cache }),
+    searchTrademarks: (query) => searchTrademarks(query, { euipo: current().euipo, cache }),
   };
 }

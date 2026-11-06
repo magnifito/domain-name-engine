@@ -2,6 +2,7 @@ import type { DiskCache } from '../cache/cache.js';
 import type { HttpFetch } from '../http/http.js';
 import { type TldInfo, tldInfo } from '../tld/info.js';
 import { bundledTables, type TldTables } from '../tld/table.js';
+import { envOnlyKeySource, type KeyFileSetup, type KeySource } from '../util/key-file.js';
 import { createCloudflareClient } from './cloudflare.js';
 import {
   type Credentials,
@@ -19,12 +20,15 @@ export interface RegistrarRuntime {
   tldInfo(tld: string): TldInfo;
   registrarQuote(domains: string[]): Promise<QuoteResult>;
   registrarStatus(): RegistrarStatusReport;
+  keysSetup(): KeyFileSetup;
 }
 
 export interface RegistrarRuntimeDeps {
   http: HttpFetch;
   cache: DiskCache;
   env: NodeJS.ProcessEnv;
+  /** Key file reader. Without it only env variables count. */
+  keys?: KeySource;
   now?: () => Date;
   tables?: TldTables;
 }
@@ -42,20 +46,31 @@ export function liveClients(
 }
 
 export function createRegistrarRuntime(deps: RegistrarRuntimeDeps): RegistrarRuntime {
-  const creds = readCredentials(deps.env);
-  const secrets = secretValues(creds);
-  const clients = liveClients(creds, deps);
+  const keys = deps.keys ?? envOnlyKeySource(deps.env);
   const tables = () => deps.tables ?? bundledTables();
+  // Rebuild the clients only when the keys change (the key source returns the same env object otherwise).
+  let live: { env: NodeJS.ProcessEnv; secrets: string[]; clients: LiveClient[] } | undefined;
+  const current = () => {
+    const env = keys.env();
+    if (live?.env !== env) {
+      const creds = readCredentials(env);
+      live = { env, secrets: secretValues(creds), clients: liveClients(creds, deps) };
+    }
+    return live;
+  };
   return {
     tldInfo: (tld) => tldInfo(tld, tables()),
-    registrarQuote: (domains) =>
-      quoteDomains(domains, {
+    registrarQuote: (domains) => {
+      const { secrets, clients } = current();
+      return quoteDomains(domains, {
         tables: tables(),
         clients,
         cache: deps.cache,
         secrets,
         now: deps.now,
-      }),
-    registrarStatus: () => registrarStatus(deps.env),
+      });
+    },
+    registrarStatus: () => registrarStatus(keys.env(), keys.status()),
+    keysSetup: () => keys.setup(),
   };
 }

@@ -1,6 +1,6 @@
 # How to get API keys
 
-Checked: 2026-11-04
+Checked: 2026-11-06
 
 All keys are optional. The plugin works without them. Each key unlocks one extra feature. Get only the keys you want.
 
@@ -8,7 +8,9 @@ Some steps changed recently or sit behind pages we could not read. Where a step 
 
 ## Where to put the keys
 
-### Claude Code: the plugin settings form (recommended)
+There are three places. Use one. If the same key is set in more than one place, the plugin settings form wins, then an environment variable, then the key file.
+
+### Claude Code: the plugin settings form (most secure)
 
 1. Enable the plugin. Claude Code shows a form with one field per key. Every field is optional.
 2. Paste each key into its field. Secret fields are masked.
@@ -16,21 +18,37 @@ Some steps changed recently or sit behind pages we could not read. Where a step 
 
 Claude Code stores secret fields (API keys, secrets, tokens) in the system credential store, which is the Keychain on macOS. It does not write them to `settings.json`. Non-secret fields (Namecheap user and IP, Cloudflare account ID, the Reddit and EUIPO client IDs, `EUIPO_ENV`) go under `pluginConfigs` in your `settings.json`. Claude Code passes the values only to the plugin's MCP server. They are not in your shell, and not in the commands Claude runs for you. Official source: https://code.claude.com/docs/en/plugins-reference (section "User configuration").
 
-A value in the form wins over an env variable with the same name.
+### Codex, or any host: the key file (easiest)
 
-### Codex, or Claude Code with env variables
+Works the same on macOS, Linux, and Windows.
 
-1. Export each key in the shell that starts `claude` or `codex`.
+1. Ask the agent: "set up my API keys". It runs the `keys_setup` tool, which creates the key file and tells you where it is:
+   - macOS and Linux: `~/.domain-engine/keys.env`
+   - Windows: `%USERPROFILE%\.domain-engine\keys.env`
+2. Open the file in any text editor. It lists every key name with an empty value:
 
-   ```sh
-   export SPACESHIP_API_KEY="<your-key>"
-   export SPACESHIP_API_SECRET="<your-secret>"
+   ```
+   SPACESHIP_API_KEY=
+   SPACESHIP_API_SECRET=
    ```
 
-2. Open a new terminal so the shell reads the new values.
-3. Start `claude` or `codex` from that terminal.
+3. Paste each key after its `=` sign and save. No quotes needed.
+4. Ask the agent to run `registrar_status`. The server reads the file again when it changes, so there is no restart.
 
-A plain `export` line in `~/.zshrc` leaves the key in a text file and gives it to every program you start. To avoid that on macOS, keep the key in the Keychain and pass it only to `claude` and `codex`:
+You can also create the file yourself with the names from the [summary](#summary) table. If you set `DOMAIN_ENGINE_HOME`, the file lives in that folder instead.
+
+How safe is it: the file is plain text. On macOS and Linux `keys_setup` makes it readable by your user only (mode 600), and fixes the mode of an existing file. On Windows it sits in your user folder, which other standard users cannot read. This is the same model as `~/.aws/credentials` or `~/.npmrc`. Any program running as you can still read it, so the settings form above is safer where it is available. `registrar_status` warns when other users can read the file.
+
+### Advanced: environment variables
+
+Every key can also come from an environment variable with the same name, set in the shell that starts `claude` or `codex`:
+
+```sh
+export SPACESHIP_API_KEY="<your-key>"
+export SPACESHIP_API_SECRET="<your-secret>"
+```
+
+A plain `export` line in `~/.zshrc` leaves the key in a text file and gives it to every program you start. On macOS you can keep the key in the Keychain and pass it only to `claude` and `codex`:
 
 ```sh
 # Run once per key. It prompts for the value, so the key stays out of shell history.
@@ -50,21 +68,17 @@ claude() { _dne_env command claude "$@"; }
 codex()  { _dne_env command codex "$@"; }
 ```
 
-Add one line per key you use. With this setup the commands that `claude` or `codex` run still inherit the keys.
-
 How each host passes env variables:
 
 - **Codex:** the plugin's `.codex-mcp.json` lists every variable under `env_vars`. Codex starts MCP servers with a cleared environment and forwards only the listed names. Official source: https://developers.openai.com/codex/mcp (field `env_vars`).
 - **Claude Code:** the plugin's `.mcp.json` lists every variable as `"NAME": "${NAME:-}"`. An unset variable expands to an empty string, and the server treats a blank value as "no key". Official source: https://code.claude.com/docs/en/mcp (section "Environment variable expansion in .mcp.json").
 
-Rules:
+### Rules
 
 - Never commit keys. Never put them in a project file.
-- Give each key the smallest scope the guide lists. Anything that runs as your user can read the Keychain, so a narrow scope limits the damage if a key leaks.
-- Never paste a key into the chat.
+- Give each key the smallest scope the guide lists, so a leaked key can do little damage.
+- Never paste a key into the chat. The agent never needs to see it.
 - Run `registrar_status` to see which keys the server found. It shows set or not set, never the values.
-
-Official source: https://code.claude.com/docs/en/mcp (section "Environment variable expansion in .mcp.json").
 
 ## Summary
 
