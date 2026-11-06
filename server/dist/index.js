@@ -7923,7 +7923,7 @@ function readEnv(env, name) {
 	return readOne(env, `USER_CONFIG_${name}`) ?? readOne(env, name);
 }
 // src/config.ts
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 const REPO_URL = "https://github.com/magnifito/domain-name-engine";
 const USER_AGENT = `domain-name-engine/${VERSION} (+${REPO_URL})`;
 function engineHome(env = process.env) {
