@@ -50,10 +50,27 @@ describe('Spaceship client', () => {
     });
   });
 
-  it('maps an undocumented result value to unknown with a reason, not to unavailable', async () => {
+  it('maps the documented "taken" result to unavailable', async () => {
     const [quote] = await client().client.quote(['google.com']);
+    expect(quote).toMatchObject({ availability: 'unavailable' });
+    expect(quote?.reason).toBeUndefined();
+  });
+
+  it('keeps other results unknown with a reason, never unavailable', async () => {
+    const fake = fakeHttp([
+      [
+        `${SPACESHIP_API}/v1/domains/available`,
+        () =>
+          Response.json({
+            domains: [{ domain: 'zentrova.zz', result: 'tldNotSupported', premiumPricing: [] }],
+          }),
+      ],
+      [`${SPACESHIP_API}/v1/domains/pricing/query`, () => Response.json({ items: [] })],
+    ]);
+    const c = createSpaceshipClient(CREDS, { http: fake.http, now: () => FIXED_NOW });
+    const [quote] = await c.quote(['zentrova.zz']);
     expect(quote).toMatchObject({ availability: 'unknown' });
-    expect(quote?.reason).toContain('taken');
+    expect(quote?.reason).toBe('Spaceship availability result: tldNotSupported');
   });
 
   it('keeps the availability answer when the pricing call fails (M4)', async () => {

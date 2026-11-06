@@ -97,7 +97,7 @@ Without registrar keys, `registrar_quote` returns prices from the bundled table 
 
 ## How prices are labeled
 
-- Every price carries its source and date. Table prices read "reference price from Spaceship, checked 2026-11-04 — verify at registrar". Live prices read "live price from Spaceship API, <time>".
+- Every price carries its source and date. Table prices read "reference price from Spaceship, checked 2026-11-06 — verify at registrar". Live prices read "live price from Spaceship API, <time>".
 - First-year and renewal prices are always shown side by side, with a 3-year total. Low first-year prices often renew much higher, for example .store at Cloudflare: USD 4.99 first year, 42.20 renewal.
 - A missing value is shown as "unknown". Prices are never estimated, and currencies are never mixed or converted. The cheapest 3-year option is given once per currency.
 - Live results override table prices and are cached for 1 hour.
@@ -107,13 +107,13 @@ Without registrar keys, `registrar_quote` returns prices from the bundled table 
 
 `server/data/registrar-tlds.json` holds one row per registrar and TLD with first-year, renewal, and transfer prices, the currency, the source, and the check date. `server/data/tld-reputation.json` holds the reputation notes.
 
-The seed table from 2026-11-04 covers a small set of TLDs:
+Current table, refreshed 2026-11-06:
 
-- Spaceship: first-year prices for 8 low-cost TLDs, recorded from spaceship.com. Renewal prices are unknown until the first refresh with API keys.
-- Namecheap: rows without prices, marked "unverified", until the first refresh with API keys.
-- Cloudflare: 18 TLDs from cfdomainpricing.com/prices.json, a free third-party list of Cloudflare Registrar prices in USD.
+- Spaceship: 506 TLDs with first-year, renewal, and transfer prices in USD, from the Spaceship API (`/v1/tlds/pricing`).
+- Cloudflare: 430 TLDs from cfdomainpricing.com/prices.json, a free third-party list of Cloudflare Registrar prices in USD.
+- Namecheap: rows without prices, marked "unverified", until a refresh with Namecheap keys.
 
-Without keys, Spaceship and Namecheap have no bundled price for common TLDs such as .com, .de, and .uk. Run `pnpm refresh:tlds` with keys set, or set the registrar keys for live quotes.
+Set registrar keys for live quotes, which override table prices.
 
 The engine never scrapes registrar web pages. Spaceship and Namecheap price pages block automated clients, so the table is filled only from official APIs and documented public files.
 

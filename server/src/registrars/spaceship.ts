@@ -4,6 +4,7 @@ import type { SpaceshipCreds } from './credentials.js';
 import {
   type ClientDeps,
   chunk,
+  type LiveAvailability,
   type LiveClient,
   type LiveQuote,
   toPrice,
@@ -145,6 +146,17 @@ async function readJson(res: Response): Promise<unknown> {
   return res.json();
 }
 
+/**
+ * Documented values of DomainAvailabilityResult (docs.spaceship.dev OpenAPI spec, checked
+ * 2026-11-06): available, taken, invalidDomainName, tldNotSupported, unexpectedError.
+ * Only available and taken answer the question; anything else stays unknown with a reason.
+ */
+function toAvailability(result: string): { availability: LiveAvailability; reason?: string } {
+  if (result === 'available') return { availability: 'available' };
+  if (result === 'taken') return { availability: 'unavailable' };
+  return { availability: 'unknown', reason: `Spaceship availability result: ${result}` };
+}
+
 function toQuote(
   domain: string,
   checkedAt: string,
@@ -170,16 +182,12 @@ function toQuote(
   return {
     registrar: 'spaceship',
     domain,
-    // Only "available" is documented. Any other value is unknown, never "unavailable".
-    availability: availability.result === 'available' ? 'available' : 'unknown',
+    ...toAvailability(availability.result),
     premium,
     firstYear: register && register.currency === currency ? register.amount : null,
     renewal: renew && renew.currency === currency ? renew.amount : null,
     currency,
     checkedAt,
-    ...(availability.result === 'available'
-      ? {}
-      : { reason: `undocumented Spaceship result: ${availability.result}` }),
   };
 }
 

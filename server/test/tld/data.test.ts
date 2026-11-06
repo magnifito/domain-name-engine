@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import registrarData from '../../data/registrar-tlds.json' with { type: 'json' };
 import reputationData from '../../data/tld-reputation.json' with { type: 'json' };
+import { tldInfo } from '../../src/tld/info.js';
 import {
   PriceRowSchema,
   RegistrarTableSchema,
@@ -109,10 +110,21 @@ describe('schemas', () => {
     ).toThrow('full coverage needs fullList');
   });
 
-  it('keeps Cloudflare bond and sbs out of notSold (only listed as not listed by the source)', () => {
+  it('never marks a TLD as not sold from the Cloudflare list (absence is only "not listed")', () => {
     const { cloudflare } = bundledTables().registrars.registrars;
     expect(cloudflare.notSold).toEqual([]);
-    expect(cloudflare.notListed.map((n) => n.tld).sort()).toEqual(['bond', 'sbs']);
+    expect(
+      tldInfo('sbs', bundledTables()).registrars.find((r) => r.registrar === 'cloudflare')?.sale,
+    ).toBe('not_listed');
+  });
+
+  it('has refreshed Spaceship prices for common TLDs', () => {
+    const rows = bundledTables().registrars.rows.filter((r) => r.registrar === 'spaceship');
+    for (const tld of ['com', 'io', 'app', 'co']) {
+      const row = rows.find((r) => r.tld === tld);
+      expect(row?.firstYear, tld).toBeTypeOf('number');
+      expect(row?.renewal, tld).toBeTypeOf('number');
+    }
   });
 
   it('rejects duplicate registrar × TLD rows', () => {

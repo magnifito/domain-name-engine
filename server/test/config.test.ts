@@ -29,7 +29,7 @@ describe('config', () => {
 
   it('uses a generic user agent with the repo URL', () => {
     expect(USER_AGENT).toBe(
-      'domain-name-engine/0.2.0 (+https://github.com/magnifito/domain-name-engine)',
+      'domain-name-engine/0.2.1 (+https://github.com/magnifito/domain-name-engine)',
     );
   });
 

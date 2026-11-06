@@ -2,7 +2,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readEnv } from './util/env.js';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';
 export const REPO_URL = 'https://github.com/magnifito/domain-name-engine';
 export const USER_AGENT = `domain-name-engine/${VERSION} (+${REPO_URL})`;
 
