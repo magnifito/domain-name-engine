@@ -1,6 +1,12 @@
 {
   "name": "domain-name-engine",
-  "owner": { "name": "Magnifito" },
+  "owner": {
+    "name": "Magnifito",
+    "url": "https://github.com/magnifito"
+  },
+  "metadata": {
+    "description": "Find a brand name and a domain: availability checks, brand research, and dated registrar prices."
+  },
   "plugins": [
     {
       "name": "domain-name-engine",
