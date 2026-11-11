@@ -7923,7 +7923,7 @@ function readEnv(env, name) {
 	return readOne(env, `USER_CONFIG_${name}`) ?? readOne(env, name);
 }
 // src/config.ts
-const VERSION = "0.2.1";
+const VERSION = "0.3.0";
 const REPO_URL = "https://github.com/magnifito/domain-name-engine";
 const USER_AGENT = `domain-name-engine/${VERSION} (+${REPO_URL})`;
 function engineHome(env = process.env) {
@@ -20986,6 +20986,7 @@ const BriefSchema = object$1({
 	positioning: object$1({
 		competitors: array(nonBlank(200)).min(1).max(5).optional().describe("O: 3-5 competitors, name or URL"),
 		difference: nonBlank(500).optional().describe("O: What makes it different"),
+		emotionalPromise: nonBlank(500).optional().describe("O: How the customer should feel; an association to explore, not mandatory name words"),
 		priceTier: _enum([
 			"budget",
 			"mid",
@@ -20998,6 +20999,21 @@ const BriefSchema = object$1({
 		avoid: array(nonBlank(60)).max(20).optional().describe("O: Words or feelings to avoid")
 	}),
 	nameRules: object$1({
+		creativeGuidance: nonBlank(3e3).optional().describe("O: Creative directions, desired associations, and lessons from earlier rounds"),
+		references: array(object$1({
+			name: nonBlank(120),
+			preference: _enum([
+				"like",
+				"dislike",
+				"benchmark"
+			]),
+			reason: nonBlank(500)
+		})).max(100).optional().describe("O: Liked, rejected, or benchmark names with reasons; benchmarks are not templates"),
+		domainPolicy: object$1({
+			tlds: array(TldSchema).min(1).max(30).optional().describe("Only these TLDs when set"),
+			allowAffixes: boolean().optional().describe("Default false: do not rescue a taken name with affixes"),
+			includeRegistered: boolean().optional().describe("Default false: omit registered domains and aftermarket research")
+		}).optional().describe("O: Search policy for the skills; explicit choices override ruleset TLD defaults"),
 		rulesets: array(SelectableRulesetIdSchema).min(1).max(3).refine((ids) => new Set(ids).size === ids.length, "Pick each ruleset once.").describe("R: 1-3 ruleset ids from ruleset_list"),
 		overrides: object$1({
 			minLength: nameLength.optional(),

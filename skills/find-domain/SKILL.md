@@ -1,63 +1,36 @@
 ---
 name: find-domain
-description: Use when the user wants to find a brand name and domain end to end - for example "help me name my startup", "find a domain for my product", or "continue my naming project". Runs the brief, generate, research, language-check, and report skills in order on one saved project, and resumes an existing project at the first unfinished step.
+description: Use when the user wants to find a brand name and domain end to end or continue a naming project. Coordinates a creative brief, diverse generation, availability checks, research, language review, and recommendations directly in chat.
 ---
 
 # Find domain
 
-The entry point for the full flow. Each step is its own skill and also runs alone. This skill picks the next step, runs it, and keeps the user informed.
+Run each skill on the same saved project. The agent supplies creative judgment; the MCP server supplies stored evidence. A successful search finds names the user can identify with, not merely unregistered domains.
+
+## Start or resume
+
+Call `project_list`; use the project already named in the conversation, otherwise resolve which one to continue or create. For an existing project call `project_get`, read the current brief and feedback, and surface any recovery warning.
+
+Choose the next step from the user's request and current evidence, not just old names or a report file. A request for better names returns to `generate`. Reassess an old shortlist against the current brief, feedback, and domain policy before continuing. A previous `report.md` does not prove that the current search is complete.
 
 ## Flow
 
-| Step | Skill | Done when |
-|---|---|---|
-| 1 | `brief` | `project_create` returned a slug |
-| 2 | `generate` | the project has names and the user picked a shortlist with `project_shortlist` |
-| 3 | `research` | every shortlisted name has a trademark result, and a profile for each of its `registered` primary-TLD domains (see "TLD coverage for a name" in `references/tlds.md` of the generate skill); handle results are required only when `nameRules.handles` in the brief is not empty |
-| 4 | `language-check` | every shortlisted name has a note with kind `language` for each code in `audience.languages` |
-| 5 | `report` | `report.md` exists at the project's `paths.reportFile` |
+1. **Brief.** Invoke `brief` with the supplied context. It prefills known facts and uses a short choice-first survey for missing preferences, preferably with the host's clickable question controls. Skip the survey for a complete brief. Preserve the emotional promise, references and rejection reasons, creative guidance, and domain policy. Continue when saved.
+2. **Generate.** Invoke `generate`. Explore distinct territories and structures, judge before availability, and expand within a bounded search. Present a manageable, varied selection directly in chat; save the user's shortlist through `project_shortlist`. If nothing compelling survives, stop and calibrate.
+3. **Research.** Invoke `research` for eligible shortlisted names. Each needs allowed-domain evidence, trademark and competitor checks, and handles only when requested. Profiles for registered primary-TLD domains are required only when `domainPolicy.includeRegistered` is true. Check each research kind independently; a trademark result alone does not prove research is complete.
+4. **Language.** Invoke `language-check` for the shortlist and target languages, including English. Explain serious issues and revisit the shortlist rather than hide a risk.
+5. **Recommend.** Invoke `report` to refresh registrar evidence and compare worthy finalists directly in chat. A file is optional, only when requested. If checks eliminate the whole shortlist, say so and offer a changed creative direction; do not rank rejected names to fill the answer.
 
-## Rules
+Confirm the brief and let the user choose the shortlist, honoring decisions already made in the conversation. Announce stages briefly; do not add approval gates to routine checks. Summarize intermediate research rather than printing a full dossier at every step.
 
-- Pause for the user at two points: confirming the brief (inside `brief`) and picking the shortlist (inside `generate`). Run the other steps without asking, and say in one line which step you are starting.
-- Say "likely available" only when `check_domains` returned `likely_available`. Never say a domain is available without a tool result.
-- Every price names its source and date: "reference price from <registrar>, checked <date> — verify at registrar" for table prices, "live price from <registrar> API, <time>" for live prices. Show first-year and renewal side by side, show a missing value as "unknown", and never add up different currencies. Do not state prices from memory; they come from the `report` step.
-- When a tool returns an error, tell the user in plain words. A failed check stops only that check; continue with the next step and say what is missing.
-- No emoji, no urgency copy.
+## Output and evidence
 
-## Step 0: New or resume
+- Lead with up to six worthwhile names, exact domains, natural associations, reasons to choose them, main weaknesses, and dated check evidence. Explain meaningful tradeoffs. No mandatory score table or file path.
+- Keep registered domains, failed checks, and fallback spellings out of recommendations unless explicitly requested. Preserve their results internally. Exact-domain constraints apply at every stage.
+- Distinguish a registry no-record signal, preliminary `likely_available`, and live registrar-confirmed purchase availability. Unknown stays unknown; table prices and DNS absence do not confirm availability.
+- Follow `report` price rules: source and date, first-year and renewal together, no mixing currencies, no guessed values.
+- Domain availability is separate from trademark clearance and existing brand use. No urgency copy or emoji.
+- If a tool or skill fails, name the gap and continue independent work. Never treat a missing check as successful.
+- No report file, HTML page, or visual review surface unless requested. Internal project persistence remains part of the workflow.
 
-1. Call `project_list`.
-2. If projects exist, ask whether to continue one (show slug, title, and last update) or start a new one. If the user named a project, use it.
-3. To resume, call `project_get` and start at the first step in the table whose "done when" is not met. For step 5, check whether the file at `paths.reportFile` exists.
-4. If `project_get` returns `recoveredFromBackup: true`, show its `warning` to the user before going on.
-
-## Step 1: Brief
-
-Invoke the `brief` skill with what the user has given so far: the idea in their words, or the path of a filled brief template. Continue when it reports a slug.
-
-## Step 2: Names and shortlist
-
-Invoke the `generate` skill for the slug. It saves names, runs the quick availability filter, and asks the user for a shortlist. If the user wants another round, run `generate` again. If the user wants to change the brief, go back to `brief` (it saves a new brief version) and then run `generate`.
-
-## Step 3: Research
-
-Invoke the `research` skill for the slug. It checks the shortlisted names' domains across the chosen TLDs, the profiles of taken domains, social handles, and trademarks, and runs the competitor scan.
-
-## Step 4: Language check
-
-Invoke the `language-check` skill for the slug. It reviews meaning and pronunciation in the brief's target languages and saves notes.
-
-## Step 5: Report
-
-Invoke the `report` skill for the slug. It ranks the names and writes `report.md`.
-
-## Step 6: Wrap up
-
-1. Give the user the path of `report.md` and the top 3 names, one line each, in the report's wording.
-2. Say that `likely_available` is not a guarantee: free sources cannot see premium or registry-reserved names, so the user must confirm at a registrar.
-3. Offer the next moves: another naming round (`generate`), a brief change (`brief`), or research on more names (add them with `project_shortlist`, then run `research`).
-
-## If a skill is missing
-
-If `research`, `language-check`, or `report` is not installed, say so, skip that step, and continue. Never fill the gap with guessed availability, handles, trademarks, or prices.
+End with the recommendation and limits, or an honest no-fit result and one useful calibration question. A completed turn needs no `report.md`.

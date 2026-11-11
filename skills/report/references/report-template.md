@@ -1,6 +1,6 @@
 # Report template
 
-Fill this structure. Replace every `<...>` with data from the tool results. Leave out a section only when the template marks it optional. Write "unknown" for any missing value.
+Use this structure only for a file export requested by the user. It is not the default chat answer. Include only editorial survivors and policy-compliant domains; never add rejected or registered names merely to fill the report. Replace placeholders with actual evidence and write "unknown" for missing values. Omit irrelevant optional detail.
 
 ```markdown
 # Naming report: <project title>
@@ -10,7 +10,7 @@ Price mode: <"bundled table only" when registrar_quote mode is "table"; otherwis
 
 ## Ranking
 
-| Rank | Name | Ruleset | Best likely-available domain | Cheapest 3-year option | Main risk |
+| Rank | Name | Ruleset | Best eligible domain | Cheapest 3-year option | Main risk |
 |---|---|---|---|---|---|
 | 1 | <name> | <rulesetId> | <domain, or "none"> | <amount currency at registrar, or "unknown"> | <one short phrase, or "none found"> |
 
@@ -20,7 +20,7 @@ Price mode: <"bundled table only" when registrar_quote mode is "table"; otherwis
 
 Ruleset: <rulesetId>. <strategy, when present>. <rationale, when present>
 
-### <domain>: likely available (check_domains, <source>, checked <checkedAt>)
+### <domain>: <evidence level, source, original checkedAt>
 
 | Registrar | Sells TLD | First year | Renewal | 3-year total | Currency | Price label |
 |---|---|---|---|---|---|---|
@@ -34,11 +34,9 @@ Cheapest 3-year option: <one line per currency: "<amount> <currency> at <registr
 
 TLD .<tld>: reputation <good / mixed / poor>. <reputationNote> (source: <source>, checked <checkedAt>)
 
-### Not available or unknown
+### Registered-domain investigation (optional: only when explicitly requested)
 
-| Domain | Status | Source | Checked |
-|---|---|---|---|
-| <domain> | <registered / unknown / unavailable at registrar> | <source> | <checkedAt> |
+<Relevant offer or profile evidence, with source and date. Do not list failed checks by default.>
 
 ### Language risks (optional: only when the name has language notes)
 
@@ -55,7 +53,7 @@ TLD .<tld>: reputation <good / mixed / poor>. <reputationNote> (source: <source>
 ## Sources and limits
 
 - <each note from registrar_quote, one bullet each>
-- Availability comes from public RDAP, WHOIS, and DNS data. "Likely available" means no registration was found at check time; only a registrar can confirm that a domain is free.
+- Domain evidence distinguishes a registry no-record signal, preliminary likely availability, and live registrar-confirmed purchase availability. DNS absence alone proves none of these. Cite the original check time; only checkout secures a domain.
 - Table prices are reference prices from the bundled table. They can be out of date and do not include taxes, fees, or promotions. Verify at the registrar before buying.
 - Without registrar API keys, premium names cannot be detected and their price is unknown.
 - Prices are never converted between currencies.

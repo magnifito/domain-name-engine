@@ -31,10 +31,14 @@ const OPTIONAL = [
   'subject.keywords',
   'positioning.competitors',
   'positioning.difference',
+  'positioning.emotionalPromise',
   'personality.archetype',
   'personality.avoid',
   'nameRules.overrides',
   'nameRules.handles',
+  'nameRules.creativeGuidance',
+  'nameRules.references',
+  'nameRules.domainPolicy',
   'future.scope',
 ];
 
@@ -66,6 +70,51 @@ describe('BriefSchema', () => {
     const brief = await loadBrief();
     const { what: _what, ...subject } = brief.subject;
     expect(issues({ ...brief, subject })[0]).toMatch(/^subject\.what: /);
+  });
+
+  it('preserves creative context and exact-domain choices instead of stripping them', async () => {
+    const brief = await loadBrief();
+    const input = {
+      ...brief,
+      positioning: { ...brief.positioning, emotionalPromise: 'Confident and capable' },
+      nameRules: {
+        ...brief.nameRules,
+        creativeGuidance: 'Explore familiar metaphors as well as meaningful compounds.',
+        references: [
+          {
+            name: 'Example One',
+            preference: 'benchmark',
+            reason: 'Simple structure, not a template',
+          },
+          { name: 'Example Two', preference: 'dislike', reason: 'Too literal' },
+        ],
+        domainPolicy: { tlds: ['com'], allowAffixes: false, includeRegistered: false },
+      },
+    };
+    expect(BriefSchema.parse(input)).toEqual(input);
+  });
+
+  it.each([
+    { tlds: [] },
+    { tlds: ['.com'] },
+    { tlds: ['com'], allowAffixes: 'false' },
+    { includeRegistered: 'yes' },
+  ])('rejects malformed domain policies: %j', async (domainPolicy) => {
+    const brief = await loadBrief();
+    expect(issues({ ...brief, nameRules: { ...brief.nameRules, domainPolicy } })).not.toEqual([]);
+  });
+
+  it('requires a reason for a naming reference', async () => {
+    const brief = await loadBrief();
+    expect(
+      issues({
+        ...brief,
+        nameRules: {
+          ...brief.nameRules,
+          references: [{ name: 'Example', preference: 'dislike', reason: ' ' }],
+        },
+      }),
+    ).not.toEqual([]);
   });
 
   it('rejects a blank answer', async () => {

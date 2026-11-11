@@ -1,11 +1,11 @@
 ---
 name: brief
-description: Use when the user wants to start, fill in, or edit the naming brief of a brand project, hands over a filled brief template, wants to change a brief or its rulesets, wants a custom naming ruleset, or asks to run only the brief step on its own. For a general request to find a name or domain, use find-domain instead. Fills the fixed 7-section questionnaire, picks 1-3 naming rulesets, confirms with the user, and saves the project.
+description: Use when the user wants to create or edit a naming brief, provides a filled template, or wants custom naming rulesets. Prefills existing context, collects missing preferences through a short choice-first survey, confirms the brief, and saves it. For an end-to-end naming search, use find-domain.
 ---
 
 # Brief
 
-The brief is the subject matter of the brand. Every later step (`generate`, `research`, `language-check`, `report`) reads it, so it comes from a fixed questionnaire and is saved only after the user confirms it.
+The brief is the subject matter of the brand. Every later step (`generate`, `research`, `language-check`, `report`) reads it. Use the fixed schema as a storage contract, not a mandatory question-by-question interview. Read [references/quick-survey.md](references/quick-survey.md) for the default intake and host-native choice controls. Save only after confirmation.
 
 ## Tools
 
@@ -14,8 +14,12 @@ The brief is the subject matter of the brand. Every later step (`generate`, `res
 - `project_list`, `project_get`, `project_update_brief`: find an existing project and save a new version of its brief.
 
 ## Rules
+- Preserve creative intent beyond product keywords. Save the emotional promise in `positioning.emotionalPromise`, directions and learned preferences in `nameRules.creativeGuidance`, and examples with reasons in `nameRules.references` (`name`, `preference`: `like`, `dislike`, or `benchmark`, `reason`). Benchmarks are not templates to imitate; rejected examples are not global bans on styles.
+- Save explicit domain constraints in `nameRules.domainPolicy`: `tlds` is an exclusive list (exact .com means `["com"]`); `allowAffixes` and `includeRegistered` default to false in the skills. Set either true only when the user wants fallback spellings or registered/aftermarket domains. These choices override ruleset defaults, country-first TLDs, and extra TLDs. Do not ask again when already specified.
+- Do not select a coinage-heavy ruleset just because the user wants a short exact .com. Choose rulesets compatible with the creative breadth; price tier does not determine naming style.
+- Deliver results directly in chat by default. Files and visual review surfaces require a user request; project storage is internal continuity.
 
-- Ask one question at a time. Offer multiple-choice options when the field has fixed values.
+- Prefer clickable choices, in batches of up to three questions, using the host's available question interface. Fall back to numbered choices in chat. Use free text only when choices would force a guess or the user wants a custom answer. Ask only for information not already supplied.
 - Never invent answers to required questions. Take them from what the user gave you, or ask.
 - Do not save before the user confirms the summary.
 - No emoji and no urgency copy.
@@ -24,12 +28,12 @@ The brief is the subject matter of the brand. Every later step (`generate`, `res
 
 - The user gave a file path (usually a filled copy of `templates/brief.md` from this skill's folder): read it and go to Step 3.
 - The user pasted a description of the product: go to Step 3.
-- Otherwise run the interview in Step 2. If the user would rather fill a file, give them the path of `templates/brief.md` in this skill's folder and wait for it.
+- Otherwise run the choice-first intake in `references/quick-survey.md`. Step 2 is the field reference and optional guided interview, not the default sequence. If the user explicitly prefers a file, offer `templates/brief.md`.
 - The user wants to change an existing project's brief: call `project_list`, let them pick, call `project_get`, and use `project.brief.data` as the starting answers. Ask what to change, then go to Step 5.
 
 ## Step 2: Interview
 
-Ask in this order. R = required, O = optional. Tell the user they can skip optional questions.
+Use these fields to check completeness after the short survey. Run them as a sequential interview only if the user requests guided, one-at-a-time questions. R = required, O = optional. Optional questions may be skipped.
 
 ### 1. Subject
 1. R `subject.what`: What is it, in one sentence?
@@ -46,7 +50,7 @@ Ask in this order. R = required, O = optional. Tell the user they can skip optio
 
 ### 3. Positioning
 10. O `positioning.competitors`: 3-5 competitors, by name or URL (store at most 5).
-11. O `positioning.difference`: What makes it different?
+11. O `positioning.difference`: What makes it different? Also capture `positioning.emotionalPromise` when supplied: how should the customer feel?
 12. R `positioning.priceTier`: Options: budget, mid, premium.
 
 ### 4. Personality
@@ -56,7 +60,7 @@ Ask in this order. R = required, O = optional. Tell the user they can skip optio
 
 ### 5. Name rules
 16. R `nameRules.rulesets`: Pick 1-3 rulesets. See Step 4.
-17. O `nameRules.overrides`: For this project only: `minLength`, `maxLength`, words to `include`, words to `ban`, `extraTlds` (lowercase, no dot: `app`, `co.uk`).
+17. O `nameRules.overrides`: Project-only length, include/ban words, and extra TLDs. Also capture `creativeGuidance`, `references`, and `domainPolicy` from supplied preferences. Do not turn optional creative context into a mandatory questionnaire.
 18. O `nameRules.handles`: Which social handles matter? Options: github, npm, pypi, reddit, x, instagram, tiktok, youtube, linkedin.
 
 ### 6. Future
@@ -72,7 +76,7 @@ If the first message already suggests a personal brand, ask question 20 right af
 
 - Template: each question in the file has a `<!-- field.path -->` marker and an `Answer:` line. Map every non-empty answer to its field. Convert country names to ISO codes and language names to BCP 47 codes. Split comma-separated lists.
 - Free text: fill every field the text supports. Leave out fields the text does not support; do not guess them.
-- Then ask only for the required fields that are still missing, one at a time, as in Step 2. Offer the remaining optional questions in one message the user can skip.
+- Then ask only for missing required facts and high-value preferences using the choice-first survey. Do not repeat answered questions or require the user to fill every optional field. If the brief is already complete, skip the survey.
 
 ## Step 4: Pick rulesets
 
@@ -83,7 +87,7 @@ Call `ruleset_list`. Suggest 1-3 rulesets with one line each on why. Starting po
 | `mode.type` is `personal` | `personal` |
 | Developer audience: CLI, API, library, open-source tool | `dev-tool` |
 | Local service in one place | `local-business` |
-| `priceTier` premium, or a short exact `.com` is the goal | `premium` |
+| User explicitly wants compact invented names | `premium` or `coined`, after inspecting their styles |
 | `priceTier` budget, or the lowest renewal cost matters most | `budget` |
 | Plain names that say what it does | `descriptive` |
 | A distinctive brand, open to new words | `coined`, `evocative`, `compound` |
@@ -97,8 +101,8 @@ If the user wants a custom ruleset:
 
 ## Step 5: Confirm and save
 
-1. Show the brief as a short summary grouped by the 7 sections, with the chosen rulesets. Show skipped optional fields as "not given".
-2. Ask the user to confirm or correct it. If anything changes, show the summary again.
+1. Show a concise creative summary in chat: product truth, audience, emotional promise, personality, examples and rejection reasons, rulesets, and domain policy. Show missing required answers; avoid listing every skipped optional field.
+2. Offer **Start the search** or **Adjust the brief** through the available choice interface. These confirm or correct the summary; a preselected option is not approval. If the user already explicitly approved this exact brief, do not ask again. For a brief-only request use **Save brief** instead of **Start the search**.
 3. On confirmation:
    - New project: call `project_create` with the brief and a short `title` (the working name, or the product in 2-4 words).
    - Existing project: call `project_update_brief`. Tell the user this saves brief version N and that existing names keep the version they were made with.

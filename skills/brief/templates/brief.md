@@ -36,6 +36,8 @@ converts them to codes.
   Answer:
 - What makes it different? (optional) <!-- positioning.difference -->
   Answer:
+- How should the customer feel when using it? (optional) <!-- positioning.emotionalPromise -->
+  Answer:
 - Price tier: budget, mid, or premium? (required) <!-- positioning.priceTier -->
   Answer:
 
@@ -50,6 +52,12 @@ converts them to codes.
 
 ## 5. Name rules
 
+- Creative directions, associations, and lessons from earlier rounds (optional) <!-- nameRules.creativeGuidance -->
+  Answer:
+- Liked, disliked, or benchmark names, with a reason for each (optional) <!-- nameRules.references -->
+  Answer:
+- Domain policy: allowed TLDs, allow affixes, include registered/aftermarket domains (optional). Defaults: exact labels, no registered-domain suggestions. <!-- nameRules.domainPolicy -->
+  Answer:
 - Rulesets, pick 1 to 3 (required): coined, descriptive, compound, evocative, premium, dev-tool, personal, local-business, budget, or a custom ruleset id. If unsure, leave it empty and the skill will suggest some. <!-- nameRules.rulesets -->
   Answer:
 - Overrides for this project only (optional): minimum length, maximum length, words to include, words to ban, extra TLDs <!-- nameRules.overrides -->

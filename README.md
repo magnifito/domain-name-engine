@@ -31,11 +31,21 @@ Start with `find-domain`. It runs the other skills in order on one saved project
 | Skill | What it does | Ask it like this |
 |---|---|---|
 | `find-domain` | Runs the full flow: brief, generate, research, language check, report. | "Help me name my startup." |
-| `brief` | Fills the brief questionnaire, picks 1 to 3 naming rulesets, and saves the project after you confirm. | "Start a naming brief for a meal-planning app." |
-| `generate` | Writes 30 to 60 names across the chosen rulesets and runs a quick availability filter. You pick the shortlist. | "Generate names for project fridgely." |
-| `research` | Checks each shortlisted name: domains across your TLDs, taken-domain profiles, social handles, trademarks, and a competitor scan. | "Research my shortlist." |
+| `brief` | Prefills known context, collects missing preferences with clickable choices when supported, and saves the confirmed brief. | "Start a naming brief for a meal-planning app." |
+| `generate` | Explores distinct concepts and structures, judges before domain checks, and presents up to six worthwhile names in chat. You pick the shortlist. | "Generate names for project fridgely." |
+| `research` | Checks eligible domains, trademarks, competitors, and requested handles. Registered-domain profiles are opt-in. | "Research my shortlist." |
 | `language-check` | Reviews meaning and pronunciation in the brief's target languages. | "Check the shortlist in German and Spanish." |
-| `report` | Ranks the shortlist and writes `report.md` with registrar prices, 3-year totals, and TLD reputation. | "Write the report." |
+| `report` | Compares finalists and dated registrar evidence directly in chat; exports `report.md` only when requested. | "Write the report." |
+
+## How the search chooses names
+
+The agent explores several distinct creative territories and name structures, then rejects weak ideas before checking domains. It expands underexplored directions when needed, normally within three batches per invocation. A free domain cannot rescue a weak name, and a shortlist does not have to meet a quota.
+
+The saved brief can retain the emotional promise, creative guidance, and liked/rejected/benchmark examples with reasons. `nameRules.domainPolicy.tlds` restricts the search to an exclusive list, such as `["com"]`. Affix fallbacks and registered-domain suggestions are off unless explicitly enabled with `allowAffixes` or `includeRegistered`. These are skill workflow policies; the low-level checking tools remain available for direct investigations.
+
+Results lead with up to six worthwhile names, their associations, strengths, weaknesses, and dated evidence. Scores are the agent's subjective ratings, not independent quality measurements, and different ruleset scores are not directly comparable. No compelling result is a valid outcome; the agent should calibrate rather than promote weak survivors.
+
+Existing projects still load without the new optional fields. New fields should be edited with this version of the engine; older versions do not understand them. Internal project/check storage continues normally, but file reports and visual review surfaces are opt-in.
 
 ## MCP tools
 
@@ -120,7 +130,7 @@ The engine never scrapes registrar web pages. Spaceship and Namecheap price page
 ## Data and privacy
 
 - Projects, custom rulesets, the cache, and the optional `keys.env` key file live in `~/.domain-engine/`. Set `DOMAIN_ENGINE_HOME` to use another folder.
-- Reports are written to `~/.domain-engine/projects/<slug>/report.md`.
+- Requested report exports are written to `~/.domain-engine/projects/<slug>/report.md`. Recommendations appear directly in chat by default.
 - The server sends requests to RDAP and WHOIS servers, DNS resolvers, the research APIs, and the registrar APIs whose keys you set. Requests carry a generic `User-Agent` with the plugin name and repository URL, and no personal data.
 - Requests are rate limited per host, 1 request per second by default, with retries on HTTP 429 and 5xx for RDAP and registrar HTTP requests only. The homepage fetch and WHOIS make one try.
 

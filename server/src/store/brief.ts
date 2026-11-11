@@ -50,6 +50,11 @@ export const BriefSchema = z.object({
       .optional()
       .describe('O: 3-5 competitors, name or URL'),
     difference: nonBlank(500).optional().describe('O: What makes it different'),
+    emotionalPromise: nonBlank(500)
+      .optional()
+      .describe(
+        'O: How the customer should feel; an association to explore, not mandatory name words',
+      ),
     priceTier: z.enum(['budget', 'mid', 'premium']).describe('R: Price tier'),
   }),
   personality: z.object({
@@ -58,6 +63,36 @@ export const BriefSchema = z.object({
     avoid: z.array(nonBlank(60)).max(20).optional().describe('O: Words or feelings to avoid'),
   }),
   nameRules: z.object({
+    creativeGuidance: nonBlank(3000)
+      .optional()
+      .describe('O: Creative directions, desired associations, and lessons from earlier rounds'),
+    references: z
+      .array(
+        z.object({
+          name: nonBlank(120),
+          preference: z.enum(['like', 'dislike', 'benchmark']),
+          reason: nonBlank(500),
+        }),
+      )
+      .max(100)
+      .optional()
+      .describe(
+        'O: Liked, rejected, or benchmark names with reasons; benchmarks are not templates',
+      ),
+    domainPolicy: z
+      .object({
+        tlds: z.array(TldSchema).min(1).max(30).optional().describe('Only these TLDs when set'),
+        allowAffixes: z
+          .boolean()
+          .optional()
+          .describe('Default false: do not rescue a taken name with affixes'),
+        includeRegistered: z
+          .boolean()
+          .optional()
+          .describe('Default false: omit registered domains and aftermarket research'),
+      })
+      .optional()
+      .describe('O: Search policy for the skills; explicit choices override ruleset TLD defaults'),
     rulesets: z
       .array(SelectableRulesetIdSchema)
       .min(1)

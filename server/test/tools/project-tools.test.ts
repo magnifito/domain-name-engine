@@ -86,6 +86,41 @@ describe('project tools', () => {
     expect(res.text).toContain('what');
   });
 
+  it('retains naming feedback and domain policy through MCP updates and disk reloads', async () => {
+    const { client, home } = await setup();
+    const brief = await loadBrief();
+    const policy = { tlds: ['com'], allowAffixes: false, includeRegistered: false };
+    const input = {
+      ...brief,
+      positioning: { ...brief.positioning, emotionalPromise: 'Capable and in control' },
+      nameRules: {
+        ...brief.nameRules,
+        creativeGuidance: 'Explore different associations, not prefix swaps.',
+        domainPolicy: policy,
+        references: [{ name: 'Example Name', preference: 'dislike', reason: 'Too literal' }],
+      },
+    };
+    const created = await callJson(client, 'project_create', {
+      title: 'Creative context',
+      brief: input,
+    });
+    expect(created.isError).toBe(false);
+    const slug = (created.data as { slug: string }).slug;
+    const updated = {
+      ...input,
+      nameRules: {
+        ...input.nameRules,
+        creativeGuidance: 'Keep the warmth; explore familiar metaphors.',
+      },
+    };
+    const saved = await callJson(client, 'project_update_brief', { slug, brief: updated });
+    expect(saved.isError).toBe(false);
+    const reloaded = await new ProjectStore(join(home, 'projects')).get(slug);
+    expect(reloaded.project.brief.data).toEqual(updated);
+    expect(reloaded.project.brief.version).toBe(2);
+    expect(reloaded.project.briefHistory[0]?.data).toEqual(input);
+  });
+
   it('rejects a brief that names an unknown ruleset', async () => {
     const { client } = await setup();
     const brief = await loadBrief();

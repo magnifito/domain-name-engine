@@ -1,6 +1,6 @@
 {
   "name": "domain-name-engine",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Find a strong brand name and domain: LLM-driven naming with RDAP/WHOIS/DNS availability checks, brand research tools, and dated registrar prices for Spaceship, Namecheap, and Cloudflare.",
   "author": { "name": "Magnifito" },
   "homepage": "https://github.com/magnifito/domain-name-engine#readme",
